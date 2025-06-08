@@ -1,0 +1,99 @@
+import {
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
+  Edge,
+  Node,
+  NodeProps,
+  OnConnect,
+  OnEdgesChange,
+  OnNodesChange,
+  OnReconnect,
+  ReactFlow,
+  reconnectEdge,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { useCallback, useRef, useState } from "react";
+import React from "react";
+import GLSLFunctionNode, { GLSLFunctionNodeType } from "./GLSLFunctionNode";
+
+const initialNodes: GLSLFunctionNodeType[] = [
+  {
+    id: "1",
+    type: "GLSLFunctionNode",
+    data: { src: "float add(float a, float b) {\n  return a + b;\n}" },
+    position: { x: 250, y: 25 },
+  },
+  {
+    id: "2",
+    type: "GLSLFunctionNode",
+    data: { src: "float add(float a, float b) {\n  return a + b;\n}" },
+    position: { x: 250, y: 250 },
+  },
+];
+
+const initialEdges: Edge[] = [];
+
+const nodeTypes = {
+  GLSLFunctionNode,
+};
+
+function Flow() {
+  const [nodes, setNodes] = useState(initialNodes);
+  const [edges, setEdges] = useState(initialEdges);
+
+  const onNodesChange: OnNodesChange<GLSLFunctionNodeType> = useCallback(
+    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    [setNodes]
+  );
+  const onEdgesChange: OnEdgesChange<Edge> = useCallback(
+    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    [setEdges]
+  );
+  const onConnect: OnConnect = useCallback(
+    (connection) => setEdges((eds) => addEdge(connection, eds)),
+    [setEdges]
+  );
+
+  const edgeReconnectSuccessful = useRef(true);
+
+  const onReconnectStart = useCallback(() => {
+    edgeReconnectSuccessful.current = false;
+  }, []);
+
+  const onReconnect: OnReconnect<Edge> = useCallback(
+    (oldEdge, newConnection) => {
+      edgeReconnectSuccessful.current = true;
+      setEdges((els) => reconnectEdge(oldEdge, newConnection, els));
+    },
+    []
+  );
+
+  const onReconnectEnd = useCallback(
+    (_: MouseEvent | TouchEvent, edge: Edge) => {
+      if (!edgeReconnectSuccessful.current) {
+        setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+      }
+
+      edgeReconnectSuccessful.current = true;
+    },
+    []
+  );
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      onReconnect={onReconnect}
+      onReconnectStart={onReconnectStart}
+      onReconnectEnd={onReconnectEnd}
+      nodeTypes={nodeTypes}
+      fitView
+    />
+  );
+}
+
+export default Flow;
