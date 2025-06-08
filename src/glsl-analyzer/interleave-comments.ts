@@ -250,6 +250,7 @@ export function binop<NodeType extends ASTNode<T>, T>(
         op: right[1],
         left,
         right: right[2],
+        _isExpr: true,
       } as BinaryOpExpr;
       return {
         data: binopNode,

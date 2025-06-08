@@ -38,28 +38,33 @@ import { lstr } from "./useful-combinators";
 type ErrorExpr = {
   type: "error";
   why: string;
+  _isExpr: true;
 };
 
 type IntExpr = {
   type: "int";
   int: number;
   asString: string; // need this so autoformatter doesn't change the number
+  _isExpr: true;
 };
 
 type FloatExpr = {
   type: "float";
   float: number;
   asString: string; // need this so autoformatter doesn't change the number
+  _isExpr: true;
 };
 
 type BoolExpr = {
   type: "bool";
   bool: boolean;
+  _isExpr: true;
 };
 
 type VariableExpr = {
   type: "ident";
   ident: string;
+  _isExpr: true;
 };
 
 type ConditionalExpr = {
@@ -67,6 +72,7 @@ type ConditionalExpr = {
   condition: ASTNode<Expr>;
   ifTrue: ASTNode<Expr>;
   ifFalse: ASTNode<Expr>;
+  _isExpr: true;
 };
 
 export type Comment = {
@@ -104,6 +110,7 @@ export type BinaryOpExpr = {
     | "<<"
     // other
     | ",";
+  _isExpr: true;
 };
 
 type AssignmentExpr = {
@@ -111,6 +118,7 @@ type AssignmentExpr = {
   left: ASTNode<Expr>;
   right: ASTNode<Expr>;
   op: AssignmentOperator;
+  _isExpr: true;
 };
 
 type UnaryOpExpr = {
@@ -118,12 +126,14 @@ type UnaryOpExpr = {
   left: ASTNode<Expr>;
   op: "++" | "--" | "!" | "~";
   isAfter: boolean;
+  _isExpr: true;
 };
 
 type FieldAccessExpr = {
   type: "field-access";
   left: ASTNode<Expr>;
   right: ASTNode<Expr>;
+  _isExpr: true;
 };
 
 type FunctionCallExpr = {
@@ -131,12 +141,14 @@ type FunctionCallExpr = {
   identifier: FunctionIdentifier;
   args: ASTNode<Expr>[];
   isVoid: boolean;
+  _isExpr: true;
 };
 
 type FunctionCallFieldAccessExpr = {
   type: "function-call-field-access";
   left: ASTNode<Expr>;
   right: ASTNode<Expr>;
+  _isExpr: true;
 };
 
 export type Expr =
@@ -156,51 +168,61 @@ export type Expr =
 export type ExprStmt = {
   type: "expr";
   expr?: ASTNode<Expr>;
+  _isStmt: true;
 };
 
 export type SwitchStmt = {
   type: "switch";
   expr: ASTNode<Expr>;
   stmts: ASTNode<Stmt>[];
+  _isStmt: true;
 };
 
 export type CaseLabelStmt = {
   type: "case";
   expr: ASTNode<Expr>;
+  _isStmt: true;
 };
 
 export type DefaultCaseLabelStmt = {
   type: "default-case";
+  _isStmt: true;
 };
 
 export type JumpStmt = {
   type: "continue" | "break" | "discard";
+  _isStmt: true;
 };
 
 export type ReturnStmt = {
   type: "return";
   expr?: ASTNode<Expr>;
+  _isStmt: true;
 };
 
 export type DeclarationStmt = {
   type: "declaration";
   decl: Commented<Declaration>;
+  _isStmt: true;
 };
 
 export type CompoundStmt = {
   statements: ASTNode<Stmt>[];
   type: "compound";
+  _isStmt: true;
 };
 
 export type SelectionStmt = {
   cond: ASTNode<Expr>;
   rest: Commented<SelectionRestStmt>;
   type: "selection";
+  _isStmt: true;
 };
 
 export type SelectionRestStmt = {
   if: ASTNode<Stmt>;
   else?: ASTNode<Stmt>;
+  _isStmt: true;
 };
 
 export type IterationStmt =
@@ -208,17 +230,20 @@ export type IterationStmt =
       type: "while";
       cond: Commented<Condition>;
       body: ASTNode<Stmt>;
+      _isStmt: true;
     }
   | {
       type: "do-while";
       cond: ASTNode<Expr>;
       body: ASTNode<Stmt>;
+      _isStmt: true;
     }
   | {
       type: "for";
       init: ASTNode<Stmt>;
       rest: Commented<ForRestStatement>;
       body: ASTNode<Stmt>;
+      _isStmt: true;
     };
 
 export type Stmt =
@@ -646,6 +671,7 @@ variable_identifier.setPattern(
     apply(tok(TokenKind.Identifier), (s) => ({
       type: "ident",
       ident: s.text,
+      _isExpr: true,
     }))
   )
 );
@@ -670,6 +696,7 @@ primary_expression.setPattern(
               type: "int",
               int: num,
               asString: tok.text,
+              _isExpr: true,
             };
           }
         ),
@@ -678,11 +705,13 @@ primary_expression.setPattern(
           type: "float",
           float: parseFloat(float.text),
           asString: float.text,
+          _isExpr: true,
         })),
         // boolean literal
         apply(alt_sc(str("true"), str("false")), (bool) => ({
           type: "bool",
           bool: bool.text == "true",
+          _isExpr: true,
         }))
       )
     ),
@@ -705,6 +734,7 @@ const field_access: Parser<TokenKind, ASTNode<Expr>> =
         type: "field-access",
         left,
         right: right[3],
+        _isExpr: true,
       },
       [right[0], right[2]],
     ]
@@ -728,6 +758,7 @@ postfix_expression.setPattern(
           right: right[2],
           type: "binary-op",
           op: "[]",
+          _isExpr: true,
         },
         [right[0], right[3]],
       ]
@@ -742,6 +773,7 @@ postfix_expression.setPattern(
           left,
           op: right[1].text as "++" | "--",
           isAfter: true,
+          _isExpr: true,
         },
         [right[0]],
       ]
@@ -770,6 +802,7 @@ function_call_or_method.setPattern(
           type: "function-call-field-access",
           left,
           right: right[2],
+          _isExpr: true,
         },
         [right[0]],
       ]
@@ -803,6 +836,7 @@ function_call_header_no_parameters.setPattern(
       identifier: i,
       isVoid: s[1] !== undefined,
       args: [],
+      _isExpr: true,
     }),
     (o, s) => [...o, s[1]?.[0] ?? []]
   )
@@ -821,6 +855,7 @@ function_call_header_with_parameters.setPattern(
       identifier: i,
       isVoid: false,
       args: [s[1], ...s[2].map((e) => e[2])],
+      _isExpr: true,
     }),
     (o, s) => [...o, ...s[2].map((e) => e[0])]
   )
@@ -860,6 +895,7 @@ unary_expression.setPattern(
           op: expr.text as "++" | "--",
           left,
           isAfter: false,
+          _isExpr: true,
         })
       )
     )
@@ -968,6 +1004,7 @@ assignment_expression.setPattern(
           left: l[0],
           right: l[3],
           op: l[2],
+          _isExpr: true,
         }),
         (l) => [l[1]]
       )
@@ -1621,6 +1658,7 @@ declaration_statement.setPattern(
         ({
           type: "declaration",
           decl,
+          _isStmt: true,
         } satisfies Stmt)
     )
   )
@@ -1654,7 +1692,7 @@ compound_statement_no_new_scope.setPattern(
   nodeify_commented(
     commentify(
       seq(str("{"), opt_sc(statement_list), comment_parser, str("}")),
-      (s) => ({ type: "compound", statements: s[1] ?? [] }),
+      (s) => ({ type: "compound", statements: s[1] ?? [], _isStmt: true }),
       (s) => [s[2]]
     )
   )
@@ -1671,6 +1709,7 @@ expression_statement.setPattern(
       (s) => ({
         type: "expr",
         expr: s[0],
+        _isStmt: true,
       }),
       (s) => [s[1]]
     )
@@ -1693,6 +1732,7 @@ selection_statement.setPattern(
         type: "selection",
         cond: s[3],
         rest: s[6],
+        _isStmt: true,
       }),
       (s) => [s[1], s[4]]
     )
@@ -1708,6 +1748,7 @@ selection_rest_statement.setPattern(
     (s) => ({
       if: s[0],
       else: s[1]?.[2],
+      _isStmt: true,
     }),
     (s) => (s[1] ? [s[1][0]] : [])
   )
@@ -1757,6 +1798,7 @@ switch_statement.setPattern(
           type: "switch",
           expr: s[3],
           stmts: s[8] ?? [],
+          _isStmt: true,
         } satisfies SwitchStmt),
       (s) => [s[1], s[4], s[6], s[9]]
     )
@@ -1770,12 +1812,12 @@ case_label.setPattern(
     alt_sc(
       commentify(
         seq(str("case"), expression, comment_parser, str(":")),
-        (s) => ({ type: "case", expr: s[1] } as Stmt),
+        (s) => ({ type: "case", expr: s[1], _isStmt: true } as Stmt),
         (s) => [s[2]]
       ),
       commentify(
         seq(str("default"), comment_parser, str(":")),
-        (s) => ({ type: "default-case" }),
+        (s) => ({ type: "default-case", _isStmt: true }),
         (s) => [s[1]]
       )
     )
@@ -1800,6 +1842,7 @@ iteration_statement.setPattern(
             type: "while",
             cond: s[3],
             body: s[6],
+            _isStmt: true,
           } as IterationStmt),
         (s) => [s[1], s[4]]
       ),
@@ -1822,6 +1865,7 @@ iteration_statement.setPattern(
             type: "do-while",
             cond: s[6],
             body: s[1],
+            _isStmt: true,
           } as IterationStmt),
         (s) => [s[2], s[4], s[7], s[9]]
       ),
@@ -1841,6 +1885,7 @@ iteration_statement.setPattern(
           init: s[3],
           rest: s[4],
           body: s[7],
+          _isStmt: true,
         }),
         (s) => [s[1], s[5]]
       )
@@ -1874,12 +1919,12 @@ jump_statement.setPattern(
           comment_parser,
           str(";")
         ),
-        (s) => ({ type: s[0] } as Stmt),
+        (s) => ({ type: s[0], _isStmt: true } as Stmt),
         (s) => [s[1]]
       ),
       commentify(
         seq(str("return"), opt_sc(expression), comment_parser, str(";")),
-        (s) => ({ type: "return", expr: s[1] } satisfies Stmt),
+        (s) => ({ type: "return", expr: s[1], _isStmt: true } satisfies Stmt),
         (s) => [s[2]]
       )
     )
