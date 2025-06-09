@@ -262,11 +262,13 @@ export type ExternalDeclarationFunction = {
   type: "function";
   prototype: Commented<FunctionHeader>;
   body: ASTNode<CompoundStmt>;
+  _isExtDecl: true;
 };
 
 export type ExternalDeclarationDeclaration = {
   type: "declaration";
   decl: Commented<Declaration>;
+  _isExtDecl: true;
 };
 
 export type ExternalDeclaration =
@@ -292,15 +294,18 @@ export type Declaration =
   | {
       type: "function-prototype";
       prototype: Commented<FunctionHeader>;
+      _isDecl: true;
     }
   | {
       type: "declarator-list";
       declaratorList: Commented<InitDeclaratorList>;
+      _isDecl: true;
     }
   | {
       type: "type-specifier";
       precision: Commented<Precision>;
       specifier: Commented<TypeNoPrec>;
+      _isDecl: true;
     }
   | {
       type: "struct";
@@ -309,10 +314,12 @@ export type Declaration =
       name2?: Commented<string>;
       declarationList: Commented<StructDeclarationList>;
       constantExpr?: ASTNode<Expr>;
+      _isDecl: true;
     }
   | {
       type: "type-qualifier";
       typeQualifier: Commented<TypeQualifier>;
+      _isDecl: true;
     };
 
 export type FunctionIdentifier =
@@ -486,6 +493,7 @@ export type ParameterDeclaration = {
 export type StructSpecifier = {
   members: Commented<StructDeclarationList>;
   name?: Commented<string>;
+  _isStruct: true;
 };
 
 export type StructDeclarationList = Commented<StructDeclaration>[];
@@ -587,9 +595,15 @@ const parameter_qualifier = rule<
   ASTNode<ParameterQualifier> | undefined
 >();
 const parameter_type_specifier = rule<TokenKind, Commented<TypeSpecifier>>();
-const init_declarator_list = rule<TokenKind, Commented<InitDeclaratorList>>();
+export const init_declarator_list = rule<
+  TokenKind,
+  Commented<InitDeclaratorList>
+>();
 const single_declaration = rule<TokenKind, ASTNode<Expr>>();
-const fully_specified_type = rule<TokenKind, Commented<FullySpecifiedType>>();
+export const fully_specified_type = rule<
+  TokenKind,
+  Commented<FullySpecifiedType>
+>();
 const invariant_qualifier = rule<TokenKind, Commented<InvariantQualifier>>();
 const interpolation_qualifier = rule<
   TokenKind,
@@ -1036,38 +1050,18 @@ constant_expression.setPattern(conditional_expression);
 declaration.setPattern(
   alt_sc(
     commentify(
-      seq(function_prototype, comment_parser, str(";")),
-      (s) => ({ type: "function-prototype", prototype: s[0] }),
-      (s) => [s[1]]
-    ),
-    commentify(
       seq(init_declarator_list, comment_parser, str(";")),
       (s) =>
         ({
           type: "declarator-list",
           declaratorList: s[0],
+          _isDecl: true,
         } satisfies Declaration),
       (s) => [s[1]]
     ),
     commentify(
       seq(
-        str("precision"),
-        precision_qualifier,
-        type_specifier_no_prec,
-        comment_parser,
-        str(";")
-      ),
-      (s) =>
-        ({
-          type: "type-specifier",
-          precision: s[1],
-          specifier: s[2],
-        } satisfies Declaration),
-      (s) => [s[3]]
-    ),
-    commentify(
-      seq(
-        type_qualifier,
+        apply(type_qualifier, (x) => (console.log("asdasd got here"), x)),
         with_comment_before(apply(tok(TokenKind.Identifier), (t) => t.text)),
         comment_parser,
         str("{"),
@@ -1089,7 +1083,9 @@ declaration.setPattern(
               )
             )
           )
-        )
+        ),
+        comment_parser,
+        str(";")
       ),
       (s) =>
         ({
@@ -1099,14 +1095,38 @@ declaration.setPattern(
           name2: s[7]?.[0],
           declarationList: s[4],
           constantExpr: s[7]?.[1]?.[2],
+          _isDecl: true,
         } satisfies Declaration),
-      (s) => [s[2], s[5], ...(s[7]?.[1] ? [s[7][1][0], s[7][1][3]] : [])]
+      (s) => [s[2], s[5], ...(s[7]?.[1] ? [s[7][1][0], s[7][1][3]] : []), s[8]]
+    ),
+    commentify(
+      seq(function_prototype, comment_parser, str(";")),
+      (s) => ({ type: "function-prototype", prototype: s[0], _isDecl: true }),
+      (s) => [s[1]]
+    ),
+    commentify(
+      seq(
+        str("precision"),
+        precision_qualifier,
+        type_specifier_no_prec,
+        comment_parser,
+        str(";")
+      ),
+      (s) =>
+        ({
+          type: "type-specifier",
+          precision: s[1],
+          specifier: s[2],
+          _isDecl: true,
+        } satisfies Declaration),
+      (s) => [s[3]]
     ),
     commentify(
       seq(type_qualifier, comment_parser, str(";")),
       (s) => ({
         type: "type-qualifier",
         typeQualifier: s[0],
+        _isDecl: true,
       }),
       (s) => [s[1]]
     )
@@ -1292,12 +1312,14 @@ init_declarator_list.setPattern(
           )
         ),
         commentify(
-          seq(
-            identifier_declaration,
-            rep_sc(seq(comment_parser, str(","), identifier_declaration))
+          opt_sc(
+            seq(
+              identifier_declaration,
+              rep_sc(seq(comment_parser, str(","), identifier_declaration))
+            )
           ),
-          (s) => [s[0], ...s[1].map((e) => e[2])],
-          (s) => s[1].map((e) => e[0])
+          (s) => (s ? [s[0], ...s[1].map((e) => e[2])] : []),
+          (s) => (s ? s[1].map((e) => e[0]) : [])
         )
       ),
       (s) => ({
@@ -1583,6 +1605,7 @@ struct_specifier.setPattern(
     (s) => ({
       members: s[4],
       name: s[1],
+      _isStruct: true,
     }),
     (s) => [s[2], s[5]]
   )
@@ -1676,8 +1699,8 @@ statement_with_scope.setPattern(
 
 simple_statement.setPattern(
   alt_sc(
-    declaration_statement,
     expression_statement,
+    declaration_statement,
     selection_statement,
     switch_statement,
     case_label,
@@ -1946,6 +1969,7 @@ external_declaration.setPattern(
       apply(declaration, (s) => ({
         type: "declaration",
         decl: s,
+        _isExtDecl: true,
       }))
     )
   )
@@ -1955,7 +1979,12 @@ function_definition.setPattern(
   nodeify_commented(
     commentify(
       seq(function_prototype, compound_statement_no_new_scope),
-      (s) => ({ type: "function", prototype: s[0], body: s[1] }),
+      (s) => ({
+        type: "function",
+        prototype: s[0],
+        body: s[1],
+        _isExtDecl: true,
+      }),
       (s) => []
     )
   )

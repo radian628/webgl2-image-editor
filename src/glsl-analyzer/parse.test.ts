@@ -9,11 +9,13 @@ import {
   declaration,
   expression,
   external_declaration,
+  fully_specified_type,
   function_call,
   function_call_generic,
   function_call_header,
   function_call_header_no_parameters,
   function_call_header_with_parameters,
+  init_declarator_list,
   integer_expression,
   layout_qualifier,
   layout_qualifier_id,
@@ -213,6 +215,24 @@ roundtripDecl("precision highp float;", "precision highp float;");
 roundtripDecl("float x;", "float x;");
 roundtripDecl("float x = 1.0;", "float x=1.0;");
 roundtripDecl("struct A { float a; } a;", "struct A{float a;}a;");
+roundtripDecl("struct A { float a; };", "struct A{float a;};");
+
+roundtrip(
+  "fully_specified_type",
+  "struct A { float a; }",
+  "struct A{float a;}",
+  fully_specified_type,
+  FormatGLSLPacked.fullySpecifiedType,
+  true
+);
+roundtrip(
+  "init_declarator_list",
+  "struct A { float a; }",
+  "struct A{float a;}",
+  init_declarator_list,
+  FormatGLSLPacked.initDeclaratorList,
+  true
+);
 
 roundtripStmt("float x;", "float x;");
 roundtripStmt("float x = 1.0;", "float x=1.0;");

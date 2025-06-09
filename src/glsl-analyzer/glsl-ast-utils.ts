@@ -1,9 +1,12 @@
+import { id, lens, setDeep } from "../utils/lens";
+import { FormatGLSLPacked } from "./fmt-packed";
 import {
   ASTNode,
   Commented,
   Condition,
   Declaration,
   Expr,
+  ExternalDeclaration,
   ExternalDeclarationFunction,
   FullySpecifiedType,
   ParameterDeclaration,
@@ -70,316 +73,157 @@ export function getNamedOutputParameters(
   });
 }
 
-export function mapExpr(
-  node: ASTNode<Expr>,
-  map: (expr: ASTNode<Expr>) => ASTNode<Expr>
-): ASTNode<Expr> {
-  const data = node.data;
-  const n = (e: Expr): ASTNode<Expr> => ({ ...node, data: e });
-  switch (data.type) {
-    case "assignment":
-      return n({
-        ...data,
-        left: map(data.left),
-        right: map(data.right),
-      });
-    case "binary-op":
-      return n({
-        ...data,
-        left: map(data.left),
-        right: map(data.right),
-      });
-    case "bool":
-      return node;
-    case "conditional":
-      return n({
-        ...data,
-        condition: map(data.condition),
-        ifTrue: map(data.ifTrue),
-        ifFalse: map(data.ifFalse),
-      });
-    case "error":
-      return node;
-    case "field-access":
-      return n({
-        ...data,
-        left: map(data.left),
-        right: map(data.right),
-      });
-    case "float":
-      return node;
-    case "function-call":
-      let fnIdent = data.identifier;
-      if (
-        fnIdent.type === "type-specifier" &&
-        fnIdent.specifier.data.arrayType.type === "static"
-      ) {
-        fnIdent = {
-          ...fnIdent,
-          specifier: {
-            ...fnIdent.specifier,
-            data: {
-              ...fnIdent.specifier.data,
-              arrayType: {
-                ...fnIdent.specifier.data.arrayType,
-                size: map(fnIdent.specifier.data.arrayType.size),
-              },
-            },
-          },
-        };
-      }
-      return n({
-        ...data,
-        args: data.args.map((a) => map(a)),
-        identifier: fnIdent,
-      });
-    case "function-call-field-access":
-      return n({
-        ...data,
-        left: map(data.left),
-        right: map(data.right),
-      });
-    case "ident":
-      return node;
-    case "int":
-      return node;
-    case "unary-op":
-      return n({
-        ...data,
-        left: map(data.left),
-      });
+export function mapOverJson(json: any, map: (json: any) => any) {
+  if (json instanceof Array) {
+    return json.map((x) => map(x));
+  } else if (typeof json === "object") {
+    if (json === null) return json;
+    return Object.fromEntries(
+      Object.entries(json).map(([k, v]) => [k, map(v)])
+    );
+  } else {
+    return json;
   }
 }
 
-export function mapStmt(
-  node: ASTNode<Stmt>,
-  map: (stmt: ASTNode<Stmt>) => ASTNode<Stmt>
-): ASTNode<Stmt> {
-  const data = node.data;
-  const n = (s: Stmt): ASTNode<Stmt> => ({ ...node, data: s });
-  switch (data.type) {
-    case "break":
-      return node;
-    case "case":
-      return node;
-    case "compound":
-      return n({
-        ...data,
-        statements: data.statements.map((s) => map(s)),
-      });
-    case "continue":
-      return node;
-    case "declaration":
-      return node;
-    case "default-case":
-      return node;
-    case "discard":
-      return node;
-    case "do-while":
-      return n({
-        ...data,
-        body: map(data.body),
-      });
-    case "expr":
-      return node;
-    case "for":
-      return n({
-        ...data,
-        init: map(data.init),
-        body: map(data.body),
-      });
-    case "return":
-      return node;
-    case "selection":
-      return n({
-        ...data,
-        rest: {
-          ...data.rest,
-          data: {
-            if: map(data.rest.data.if),
-            else: data.rest.data.else ? map(data.rest.data.else) : undefined,
-          },
+export function mapAST<T>(
+  t: T,
+  maps: {
+    expr(
+      expr: ASTNode<Expr>,
+      mapInner: (expr: ASTNode<Expr>) => ASTNode<Expr>
+    ): ASTNode<Expr>;
+    stmt(
+      stmt: ASTNode<Stmt>,
+      mapInner: (stmt: ASTNode<Stmt>) => ASTNode<Stmt>
+    ): ASTNode<Stmt>;
+    decl(
+      decl: Commented<Declaration>,
+      mapInner: (decl: Commented<Declaration>) => Commented<Declaration>
+    ): Commented<Declaration>;
+    extDecl(
+      extDecl: ASTNode<ExternalDeclaration>,
+      mapInner: (
+        extDecl: ASTNode<ExternalDeclaration>
+      ) => ASTNode<ExternalDeclaration>
+    ): ASTNode<ExternalDeclaration>;
+    struct(
+      struct: StructSpecifier,
+      mapInner: (struct: StructSpecifier) => StructSpecifier
+    ): StructSpecifier;
+  }
+) {
+  const mapper = (child: any): any => {
+    if (child?.data?._isExpr) {
+      return maps.expr(child, (x) => mapOverJson(x, mapper));
+    } else if (child?.data?._isStmt) {
+      return maps.stmt(child, (x) => mapOverJson(x, mapper));
+    } else if (child?.data?._isDecl) {
+      return maps.decl(child, (x) => mapOverJson(x, mapper));
+    } else if (child?.data?._isExtDecl) {
+      return maps.extDecl(child, (x) => mapOverJson(x, mapper));
+    } else if (child?._isStruct) {
+      return maps.struct(child, (x) => mapOverJson(x, mapper));
+    } else {
+      return mapOverJson(child, mapper);
+    }
+  };
+  return mapper(t) as T;
+}
+
+export function renameSymbols<T>(t: T, rename: (s: string) => string) {
+  function expr(
+    e: ASTNode<Expr>,
+    mapInner: (expr: ASTNode<Expr>) => ASTNode<Expr>
+  ) {
+    if (e.data.type === "field-access") {
+      return {
+        ...e,
+        data: {
+          ...e.data,
+          left: mapAST(e.data.left, { expr, stmt, decl, extDecl, struct }),
         },
-      });
-    case "switch":
-      return n({
-        ...data,
-        stmts: data.stmts.map((s) => map(s)),
-      });
-    case "while":
-      return n({
-        ...data,
-        body: map(data.body),
-      });
-  }
-}
-
-export function mapExprInStructSpecifier(
-  ss: StructSpecifier,
-  map: (expr: ASTNode<Expr>) => ASTNode<Expr>
-): StructSpecifier {
-  const members = ss.members.data.map((m) => {});
-}
-
-export function mapExprInTypeSpecifier(
-  specifier: TypeSpecifier,
-  map: (expr: ASTNode<Expr>) => ASTNode<Expr>
-): TypeSpecifier {
-  return {
-    ...specifier,
-    specifier: {
-      ...specifier.specifier,
-      data: {
-        ...specifier.specifier.data,
-        arrayType:
-          specifier.specifier.data.arrayType.type === "static"
-            ? {
-                ...specifier.specifier.data.arrayType,
-                size: map(specifier.specifier.data.arrayType.size),
-              }
-            : specifier.specifier.data.arrayType,
-      },
-    },
-  };
-}
-
-export function mapExprInFullySpecifiedType(
-  fst: FullySpecifiedType,
-  map: (expr: ASTNode<Expr>) => ASTNode<Expr>
-): FullySpecifiedType {
-  let specifier = mapExprInTypeSpecifier(fst.specifier.data, map);
-
-  return {
-    ...fst,
-    specifier: {
-      ...fst.specifier,
-      data: specifier,
-    },
-  };
-}
-
-export function mapExprInDecl(
-  decl: Declaration,
-  map: (expr: ASTNode<Expr>) => ASTNode<Expr>
-): Declaration {
-  switch (decl.type) {
-    case "declarator-list":
-
-    // return {...decl,
-    //   declarationList:
-    // }
-  }
-}
-
-export function mapExprInCond(
-  cond: Condition,
-  map: (expr: ASTNode<Expr>) => ASTNode<Expr>
-) {
-  if (cond.type === "expr") {
-    return {
-      ...cond,
-      expr: map(cond.expr),
-    };
-  }
-  return {
-    ...cond,
-    initializer: map(cond.initializer),
-  };
-}
-
-export function mapExprInStmt(
-  stmt: ASTNode<Stmt>,
-  map: (expr: ASTNode<Expr>) => ASTNode<Expr>
-) {
-  const stmtMapper = (oldStmt: ASTNode<Stmt>): ASTNode<Stmt> => {
-    const s = mapStmt(oldStmt, stmtMapper);
-    const n = (sd: Stmt): ASTNode<Stmt> => ({ ...s, data: sd });
-    switch (s.data.type) {
-      case "case":
-        return n({
-          ...s.data,
-          expr: mapExpr(s.data.expr, map),
-        });
-      case "expr":
-        return n({
-          ...s.data,
-          expr: s.data.expr ? mapExpr(s.data.expr, map) : undefined,
-        });
-      case "return":
-        return n({
-          ...s.data,
-          expr: s.data.expr ? mapExpr(s.data.expr, map) : undefined,
-        });
-      case "selection":
-        return n({
-          ...s.data,
-          cond: mapExpr(s.data.cond, map),
-        });
-      case "do-while":
-        return n({
-          ...s.data,
-          cond: mapExpr(s.data.cond, map),
-        });
-      case "while":
-        return n({
-          ...s.data,
-          cond: {
-            ...s.data.cond,
-            data: mapExprInCond(s.data.cond.data, map),
-          },
-        });
-      case "for":
-        return n({
-          ...s.data,
-          rest: {
-            ...s.data.rest,
-            data: {
-              condition: s.data.rest.data.condition
-                ? {
-                    ...s.data.rest.data.condition,
-                    data: mapExprInCond(s.data.rest.data.condition.data, map),
-                  }
-                : undefined,
-              expr: s.data.rest.data.expr
-                ? map(s.data.rest.data.expr)
-                : undefined,
-            },
-          },
-        });
-      case "switch":
-        return n({
-          ...s.data,
-          expr: map(s.data.expr),
-        });
-      default:
-        return s;
-    }
-  };
-
-  return mapStmt(stmt, stmtMapper);
-}
-
-export function replaceSymbolInExpr(
-  node: ASTNode<Expr>,
-  oldSymbol: string,
-  newSymbol: string
-): ASTNode<Expr> {
-  const replace = (n: ASTNode<Expr>): ASTNode<Expr> => {
-    const newNode = mapExpr(n, replace);
-
-    if (newNode.data.type === "ident") {
-      if (newNode.data.ident === oldSymbol)
-        return {
-          ...newNode,
-          data: {
-            ...newNode.data,
-            ident: newSymbol,
-          },
-        };
+      };
     }
 
-    return newNode;
-  };
+    e = mapInner(e);
+    return lens(e).data.$m("type", {
+      ident: (e) => lens(e).ident.$(rename),
+      "function-call": (e) =>
+        lens(e).identifier.$m("type", {
+          "function-identifier": (i) => lens(i).identifier.$(rename),
+          "type-specifier": (i) =>
+            lens(i).specifier.data.typeName.data.$m("type", {
+              custom: (s) => lens(s).name.data.$(rename),
+              $d: id,
+            }),
+        }),
+      $d: id,
+    });
+  }
 
-  return replace(node);
+  function stmt(
+    s: ASTNode<Stmt>,
+    mapInner: (stmt: ASTNode<Stmt>) => ASTNode<Stmt>
+  ): ASTNode<Stmt> {
+    return mapInner(s);
+  }
+
+  function decl(
+    d: Commented<Declaration>,
+    mapInner: (decl: Commented<Declaration>) => Commented<Declaration>
+  ): Commented<Declaration> {
+    return mapInner(
+      lens(d).data.$m("type", {
+        struct: (d) => ({
+          ...d,
+          name: lens(d).name.$f.data.$(rename),
+          name2: lens(d).name.$f.data.$(rename),
+        }),
+
+        "declarator-list": (d) =>
+          lens(d).declaratorList.data.$p((d) => ({
+            declarations: lens(d).declarations.$f.data.$e((i) =>
+              lens(i).data.name.data.$(rename)
+            ),
+          })),
+
+        $d: id,
+      })
+    );
+  }
+
+  function extDecl(
+    d: ASTNode<ExternalDeclaration>,
+    mapInner: (
+      extDecl: ASTNode<ExternalDeclaration>
+    ) => ASTNode<ExternalDeclaration>
+  ): ASTNode<ExternalDeclaration> {
+    return mapInner(
+      lens(d).data.$m("type", {
+        function: (d) =>
+          lens(d).prototype.data.$p((d) => ({
+            name: lens(d).name.$f.data.$(rename),
+            parameters: lens(d).parameters.$f.data.$e((i) =>
+              lens(i).data.declaratorOrSpecifier.$m("type", {
+                declarator: (d) =>
+                  lens(d).declarator.data.identifier.data.$(rename),
+                specifier: id,
+              })
+            ),
+          })),
+
+        $d: id,
+      })
+    );
+  }
+
+  function struct(
+    d: StructSpecifier,
+    mapInner: (d: StructSpecifier) => StructSpecifier
+  ): StructSpecifier {
+    return mapInner(lens(d).name.data.$(rename));
+  }
+
+  return mapAST(t, { expr, stmt, decl, extDecl, struct });
 }
