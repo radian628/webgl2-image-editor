@@ -6,52 +6,59 @@ import {
 } from "../glsl-analyzer/parser";
 import { FormatGLSLPacked } from "../glsl-analyzer/fmt-packed";
 import { err, ok, Result } from "../utils/result";
+import { Table } from "../utils/table";
 
-export type GLSLFunctionNode = {
+export type NodeTemplate =
+  | {
+      type: "glsl-function";
+      src: TranslationUnit;
+      fnName: string;
+      id: number;
+      inputs: () => string[];
+      outputs: () => string[];
+    }
+  | {
+      type: "input";
+      inputs: string[];
+      id: number;
+    }
+  | {
+      type: "output";
+      outputs: string[];
+      id: number;
+    }
+  | {
+      type: "composition";
+      nodes: Table<ShaderGraphNode>;
+      edges: Table<ShaderGraphEdge>;
+      inputs: () => string[];
+      outputs: () => string[];
+    };
+
+export type ShaderGraphNode = {
   id: number;
-  src: TranslationUnit;
-  functionName: string;
-  incoming: {
-    from: number;
-    fromParam: string;
-    toParam: string;
-  }[];
+  templateId: number;
 };
 
-export type GLSLInputNode = {
-  id: number;
-  src: ASTNode<ExternalDeclaration>;
+export type ShaderGraphEdge = {
+  sourceId: number;
+  sourceInput: string;
+  targetId: number;
+  targetInput: string;
 };
 
-export type GLSLOutputNode = {
-  id: number;
-  src: ASTNode<ExternalDeclaration>;
-  from: number;
-  fromParam: string;
+export type ShaderGraph = {
+  nodeTemplates: Table<NodeTemplate>;
+  nodes: Table<ShaderGraphNode>;
+  edges: Table<ShaderGraphEdge>;
 };
 
-export type GLSLNode = GLSLFunctionNode | GLSLInputNode | GLSLOutputNode;
-
-export function createShaderFromFunctionGraph(
-  // functionGraph: Map<number, GLSLNode>
-  inputs: GLSLInputNode[],
-  outputs: GLSLOutputNode[],
-  functions: GLSLFunctionNode[]
-): Result<string, string> {
-  // const inputs = [...functionGraph.values()].flatMap((v) =>
-  //   v.type === "input" ? [v as GLSLInputNode] : []
-  // );
-  // const outputs = [...functionGraph.values()].flatMap((v) =>
-  //   v.type === "output" ? [v as GLSLOutputNode] : []
-  // );
-  // const functions = [...functionGraph.values()].flatMap((v) =>
-  //   v.type === "function" ? [v as GLSLFunctionNode] : []
-  // );
-
-  return ok(`#version 300 es
-precision highp float;
-${inputs.map((i) => FormatGLSLPacked.externalDeclaration(i.src)).join("")}
-${outputs.map((i) => FormatGLSLPacked.externalDeclaration(i.src)).join("")}
-${functions.map((i) => FormatGLSLPacked.translationUnit(i.src)).join("")}
-`);
+export function assembleComposition(
+  templates: Table<NodeTemplate>,
+  nodes: Table<ShaderGraphNode>,
+  edges: Table<ShaderGraphEdge>
+) {
+  let outstr = "";
 }
+
+export function assembleShader(graph: ShaderGraph) {}

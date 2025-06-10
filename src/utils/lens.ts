@@ -31,20 +31,20 @@ type StringKeys<T> = {
 };
 
 type LensValue<T, Root> = (cb: (t: T) => T) => Root;
-type LensPartial<T, Root> = (cb: (t: T) => Partial<T>) => Root;
+type LensPartial<T, Root> = (cb: (t: LensObject<T>) => Partial<T>) => Root;
 type LensEach<T, Root, I> = (
-  cb: (item: I, index: number, array: I[]) => I
+  cb: (item: LensObject<I>, index: number, array: I[]) => I
 ) => Root;
 type LensMatch<T, Root> = <K extends keyof StringKeys<T>>(
   prop: K,
   matchers:
     | ({
         [Key in (T[K] & string) | "$d"]?: Key extends "$d"
-          ? (t: T) => T
-          : (t: T & { [Key2 in K]: Key }) => T;
-      } & { $d: (t: T) => T })
+          ? (t: LensObject<T>) => T
+          : (t: LensObject<T & { [Key2 in K]: Key }>) => T;
+      } & { $d: (t: LensObject<T>) => T })
     | {
-        [Key in T[K] & string]: (t: T & { [Key2 in K]: Key }) => T;
+        [Key in T[K] & string]: (t: LensObject<T & { [Key2 in K]: Key }>) => T;
       }
 ) => Root;
 
@@ -59,7 +59,7 @@ type WithLensMethods<T, Root> = T & {
       }
     : {});
 
-type LensObject<T, Root> = {
+type LensObject<T, Root = T> = {
   [K in keyof WithLensMethods<T, Root>]-?: K extends "$"
     ? LensValue<T, Root>
     : K extends "$p"
@@ -82,6 +82,8 @@ export function lens<T, R = T>(
   path?: string[],
   root?: any
 ): LensObject<T, R> {
+  path ??= [];
+  root ??= t;
   return new Proxy(
     {},
     {
@@ -91,20 +93,24 @@ export function lens<T, R = T>(
           return (cb) => setDeep(root, path, cb);
         } else if (prop === "$p") {
           // @ts-expect-error
-          return (cb) => setDeep(root, path, (o) => ({ ...o, ...cb(o) }));
+          return (cb) => setDeep(root, path, (o) => ({ ...o, ...cb(lens(o)) }));
         } else if (prop === "$f") {
           return lens(t);
         } else if (prop === "$e") {
           // @ts-expect-error
-          return (cb) => setDeep(root, path, (t) => t.map(cb));
+          return (cb) =>
+            // @ts-expect-error
+            setDeep(root, path, (t) => t.map((e, i, a) => cb(lens(e), i, a)));
         } else if (prop === "$m") {
           // @ts-expect-error
           return (prop, matchers) =>
-            // @ts-expect-error
-            setDeep(root, path, (t) => (matchers[t[prop]] ?? matchers.$d)(t));
+            setDeep(root, path, (t) =>
+              // @ts-expect-error
+              (matchers[t[prop]] ?? matchers.$d)(lens(t))
+            );
         } else {
           // @ts-expect-error
-          return lens(t?.[prop], [...(path ?? []), prop], root ?? t);
+          return lens(t?.[prop], [...path, prop], root);
         }
       },
     }
@@ -113,4 +119,8 @@ export function lens<T, R = T>(
 
 export function id<T>(t: T) {
   return t;
+}
+
+export function delens<T>(t: LensObject<T>) {
+  return t.$(id);
 }

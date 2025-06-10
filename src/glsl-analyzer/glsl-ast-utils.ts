@@ -1,4 +1,4 @@
-import { id, lens, setDeep } from "../utils/lens";
+import { delens, id, lens, setDeep } from "../utils/lens";
 import { FormatGLSLPacked } from "./fmt-packed";
 import {
   ASTNode,
@@ -147,19 +147,20 @@ export function renameSymbols<T>(t: T, rename: (s: string) => string) {
     }
 
     e = mapInner(e);
-    return lens(e).data.$m("type", {
-      ident: (e) => lens(e).ident.$(rename),
+    const rewrittenExpr = lens(e).data.$m("type", {
+      ident: (e) => e.ident.$(rename),
       "function-call": (e) =>
-        lens(e).identifier.$m("type", {
-          "function-identifier": (i) => lens(i).identifier.$(rename),
+        e.identifier.$m("type", {
+          "function-identifier": (i) => i.identifier.$(rename),
           "type-specifier": (i) =>
-            lens(i).specifier.data.typeName.data.$m("type", {
-              custom: (s) => lens(s).name.data.$(rename),
-              $d: id,
+            i.specifier.data.typeName.data.$m("type", {
+              custom: (s) => s.name.data.$(rename),
+              $d: delens,
             }),
         }),
-      $d: id,
+      $d: delens,
     });
+    return rewrittenExpr;
   }
 
   function stmt(
@@ -176,19 +177,19 @@ export function renameSymbols<T>(t: T, rename: (s: string) => string) {
     return mapInner(
       lens(d).data.$m("type", {
         struct: (d) => ({
-          ...d,
-          name: lens(d).name.$f.data.$(rename),
-          name2: lens(d).name.$f.data.$(rename),
+          ...d.$(id),
+          name: d.name.$f.data.$(rename),
+          name2: d.name.$f.data.$(rename),
         }),
 
         "declarator-list": (d) =>
-          lens(d).declaratorList.data.$p((d) => ({
-            declarations: lens(d).declarations.$f.data.$e((i) =>
-              lens(i).data.name.data.$(rename)
+          d.declaratorList.data.$p((d) => ({
+            declarations: d.declarations.$f.data.$e((i) =>
+              i.data.name.data.$(rename)
             ),
           })),
 
-        $d: id,
+        $d: delens,
       })
     );
   }
@@ -202,18 +203,17 @@ export function renameSymbols<T>(t: T, rename: (s: string) => string) {
     return mapInner(
       lens(d).data.$m("type", {
         function: (d) =>
-          lens(d).prototype.data.$p((d) => ({
-            name: lens(d).name.$f.data.$(rename),
-            parameters: lens(d).parameters.$f.data.$e((i) =>
-              lens(i).data.declaratorOrSpecifier.$m("type", {
-                declarator: (d) =>
-                  lens(d).declarator.data.identifier.data.$(rename),
-                specifier: id,
+          d.prototype.data.$p((d) => ({
+            name: d.name.$f.data.$(rename),
+            parameters: d.parameters.$f.data.$e((i) =>
+              i.data.declaratorOrSpecifier.$m("type", {
+                declarator: (d) => d.declarator.data.identifier.data.$(rename),
+                specifier: delens,
               })
             ),
           })),
 
-        $d: id,
+        $d: delens,
       })
     );
   }
