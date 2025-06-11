@@ -35,52 +35,18 @@ import {
   TypeQualifier,
   TypeSpecifier,
   TypeSpecifierNonarray,
-} from "./parser";
+} from "../parser";
+import {
+  binaryPrecedences,
+  maxPrecedence,
+  minPrecedence,
+  unaryPrecedences,
+} from "./fmt-shared";
 
 export namespace FormatGLSLPacked {
   export type ExprCtx = {
     precedence: number;
   };
-
-  const unaryPrecedences = {
-    defined: 20,
-    "++": 20,
-    "--": 20,
-    "+": 20,
-    "-": 20,
-    "~": 20,
-    "!": 20,
-  };
-
-  const binaryPrecedences = {
-    defined: 20,
-    "[]": 20,
-    "*": 30,
-    "/": 30,
-    "%": 30,
-    "+": 40,
-    "-": 40,
-    "<<": 50,
-    ">>": 50,
-    "<": 60,
-    ">": 60,
-    "<=": 60,
-    ">=": 60,
-    "==": 70,
-    "!=": 70,
-    "&": 80,
-    "^": 90,
-    "|": 100,
-    "&&": 110,
-    "^^": 120,
-    "||": 130,
-    ",": 140,
-  };
-
-  const minPrecedence = 10;
-  const maxPrecedence = 150;
-
-  let x = 1 + (2 + 3);
 
   export function exprmax(e: ASTNode<Expr>): string {
     return expr(e, { precedence: maxPrecedence });

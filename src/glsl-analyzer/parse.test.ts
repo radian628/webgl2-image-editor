@@ -28,7 +28,7 @@ import {
 } from "./parser";
 import { Parser, seq } from "typescript-parsec";
 import { TokenKind } from "./lexer";
-import { FormatGLSLPacked } from "./fmt-packed";
+import { FormatGLSLPacked } from "./formatter/fmt-packed";
 
 test("2+2", () => {
   expect(2 + 2).toBe(4);

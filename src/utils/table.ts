@@ -1,81 +1,196 @@
-export interface IMultiMap<K, V> {
-  set: (k: K, v: V) => void;
-  get: (k: K) => V[];
-  // can only delete by value since this is a multimap
-  delete: (k: K, cb: (v: V) => boolean) => V[];
-  entries: Map<K, V[]>["entries"];
-}
-
-export class MultiMap<K, V> implements IMultiMap<K, V> {
-  map: Map<K, V[]>;
+// this is horrible why am i doing this
+export class ArrayMap<K extends any, V> {
+  maps: Map<number, Map<any, any>>;
   constructor() {
-    this.map = new Map();
+    this.maps = new Map();
   }
 
-  get(k: K) {
-    return this.map.get(k) ?? [];
+  nthMap(n: number) {
+    let map = this.maps.get(n);
+    if (!map) {
+      map = new Map();
+      this.maps.set(n, map);
+    }
+    return map;
   }
 
-  set(k: K, v: V) {
-    const bucket = this.map.get(k)?.concat([v]) ?? [v];
-    this.map.set(k, bucket);
+  get(path: [K, ...K[]]): V | undefined {
+    let map = this.nthMap(path.length);
+    for (const p of path) {
+      map = map.get(p);
+      if (!map) return undefined;
+    }
+    // @ts-expect-error
+    return map;
   }
 
-  delete(k: K, cb: (v: V) => boolean) {
-    const bucket = this.map.get(k) ?? [];
-    this.map.set(k, bucket.filter(cb));
-    return bucket.filter((v) => !cb(v));
+  delete(path: [K, ...K[]]): V | undefined {
+    let map = this.nthMap(path.length);
+    for (const p of path.slice(0, -1)) {
+      map = map.get(p);
+      if (!map) return undefined;
+    }
+    const item = map.get(path.at(-1));
+    map.delete(path.at(-1));
+    return item;
   }
 
-  entries() {
-    return this.map.entries();
+  change(path: [K, ...K[]], cb: (v: V | undefined) => V) {
+    let map = this.nthMap(path.length);
+    for (const p of path.slice(0, -1)) {
+      let oldMap = map;
+      map = map.get(p);
+      if (!map) {
+        map = new Map();
+        oldMap.set(p, map);
+      }
+    }
+    map.set(path.at(-1), cb(map.get(path.at(-1))));
+  }
+
+  set(path: [K, ...K[]], value: V) {
+    this.change(path, () => value);
+  }
+
+  forEach(map: (path: [K, ...K[]], v: V) => void) {
+    const r = (n: number, m: Map<any, any>, path: K[]) => {
+      if (n === 0) {
+        // @ts-expect-error
+        map(path, m);
+      } else {
+        for (const [k, v] of m) r(n - 1, m, path.concat(k));
+      }
+    };
+
+    for (const [n, map] of this.maps) {
+      r(n, map, []);
+    }
   }
 }
 
 export type Table<T> = {
   filter: {
-    [Key in keyof T]: (k: T[Key]) => Table<T>;
+    [Key in keyof T]: <K extends T[Key]>(
+      k: K
+    ) => Table<T & { [Key2 in Key]: K }>;
   };
   delete: () => T[];
   get: () => T[];
-  insert: (t: T) => void;
+  getOne: () => T;
+  add: (t: T) => void;
+  [Symbol.iterator]: Array<T>[typeof Symbol.iterator];
 };
 
-export function table<T>(data?: T[]): Table<T> {
-  if (!data) data = [];
+type ObjKey = string | number | symbol;
 
-  const maps = new Map<any, MultiMap<any, any[]>>();
-
-  function backfillMap(prop: any) {
-    let map = maps.get(prop);
-    if (!map) {
-      map = new MultiMap();
-      maps.set(prop, map);
-      for (const [k, v] of maps.values().next().value?.entries() ?? []) {
-        map.set(v[prop], v);
-      }
-    }
-  }
+export function table<T>(
+  data?: Set<T>,
+  indexPaths?: ArrayMap<keyof T, true>,
+  indexes?: ArrayMap<any, Set<T>>,
+  propFilterKeys?: [keyof T, ...(keyof T)[]],
+  propFilterValues?: [any, ...any[]]
+): Table<T> {
+  if (!data) data = new Set();
+  if (!indexes) indexes = new ArrayMap();
+  if (!indexPaths) indexPaths = new ArrayMap();
+  if (!propFilterKeys) propFilterKeys = [] as any;
+  if (!propFilterValues) propFilterValues = [] as any;
 
   return {
     // @ts-expect-error
-    delete: new Proxy(
+    filter: new Proxy(
       {},
       {
         get(target, prop, receiver) {
-          backfillMap(prop);
-
-          // @ts-expect-error
-          return (key) => maps.get(prop)?.delete(key, () => false);
+          return (v: any) =>
+            table(
+              data,
+              indexPaths,
+              indexes,
+              propFilterKeys!.concat(prop as keyof T) as any,
+              propFilterValues!.concat(v) as any
+            );
         },
       }
     ),
 
-    insert(t: T) {
-      for (const [k, v] of maps.entries()) {
-        // @ts-expect-error
-        v.set(t[k], t);
+    get() {
+      if (propFilterKeys!.length === 0) {
+        return [...data];
       }
+
+      propFilterKeys = [...new Set(propFilterKeys)].sort() as any;
+      // @ts-expect-error
+      const indexPathExists = indexPaths.get(propFilterKeys);
+      if (!indexPathExists) {
+        for (const d of data) {
+          const filter = propFilterKeys!.flatMap((e) => [e, d[e]]);
+          const set = indexes.change(filter as any, (s) =>
+            (s ?? new Set()).add(d)
+          );
+        }
+        indexPaths.set(propFilterKeys!, true);
+      }
+
+      const fullFilter = propFilterKeys!.flatMap((e, i) => [
+        e,
+        propFilterValues![i],
+      ]);
+
+      // @ts-expect-error
+      const set = indexes.get(fullFilter);
+      return set ? [...set] : [];
+    },
+
+    getOne() {
+      const data = this.get();
+      if (data.length !== 1)
+        throw new Error(
+          `Expected a single result. path=${propFilterKeys!.join(
+            ","
+          )}, values=${propFilterValues!.join(",")}`
+        );
+      return data[0];
+    },
+
+    delete() {
+      propFilterKeys = [...new Set(propFilterKeys)].sort() as any;
+      const toDelete = this.get();
+      indexPaths.forEach((path, set) => {
+        for (const d of toDelete) {
+          const filter = path.flatMap((e) => [e, d[e]]);
+          indexes.change(filter as any, (s) => (s?.delete(d), s ?? new Set()));
+        }
+      });
+      for (const d of toDelete) {
+        data.delete(d);
+      }
+      return toDelete;
+    },
+
+    add(t) {
+      propFilterKeys = [...new Set(propFilterKeys)].sort() as any;
+      indexPaths.forEach((path, set) => {
+        const filter = path.flatMap((e) => [e, t[e]]);
+        indexes.change(filter as any, (s) => (s ?? new Set()).add(t));
+      });
+      data.add(t);
+    },
+
+    [Symbol.iterator]() {
+      return this.get()[Symbol.iterator]();
     },
   };
+}
+
+type Test = Array<number>[typeof Symbol.iterator];
+
+export function tableWithData<T>(data: T[]) {
+  const tbl = table<T>();
+
+  for (const d of data) {
+    tbl.add(d);
+  }
+
+  return tbl;
 }

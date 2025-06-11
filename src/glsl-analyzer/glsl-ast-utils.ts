@@ -1,5 +1,5 @@
 import { delens, id, lens, setDeep } from "../utils/lens";
-import { FormatGLSLPacked } from "./fmt-packed";
+import { FormatGLSLPacked } from "./formatter/fmt-packed";
 import {
   ASTNode,
   Commented,

@@ -47,12 +47,14 @@ type LensMatch<T, Root> = <K extends keyof StringKeys<T>>(
         [Key in T[K] & string]: (t: LensObject<T & { [Key2 in K]: Key }>) => T;
       }
 ) => Root;
+type LensGet<T, Root> = <G>(cb: (t: T) => G) => G;
 
 type WithLensMethods<T, Root> = T & {
   $: LensValue<T, Root>;
   $p: LensPartial<T, Root>;
   $f: LensObject<T, T>;
   $m: LensMatch<T, Root>;
+  $g: LensGet<T, Root>;
 } & (T extends (infer I)[]
     ? {
         $e: LensEach<T, Root, I>;
@@ -72,6 +74,8 @@ type LensObject<T, Root = T> = {
       : never
     : K extends "$m"
     ? LensMatch<T, Root>
+    : K extends "$g"
+    ? LensGet<T, Root>
     : undefined extends WithLensMethods<T, Root>[K]
     ? LensObject<WithLensMethods<T, Root>[K], Root>
     : LensObject<WithLensMethods<T, Root>[K], Root>;
@@ -108,6 +112,13 @@ export function lens<T, R = T>(
               // @ts-expect-error
               (matchers[t[prop]] ?? matchers.$d)(lens(t))
             );
+        } else if (prop === "$g") {
+          let o = root;
+          for (let i = 0; i < path.length && o; i++) {
+            o = o[path[i]];
+          }
+          // @ts-expect-error
+          return (cb) => cb(o);
         } else {
           // @ts-expect-error
           return lens(t?.[prop], [...path, prop], root);

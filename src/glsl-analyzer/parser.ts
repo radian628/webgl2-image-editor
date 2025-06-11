@@ -284,6 +284,15 @@ export type ASTNode<T> = {
   _isNode: true;
 };
 
+export function dummyNode<T>(data: T): ASTNode<T> {
+  return {
+    data,
+    comments: [],
+    range: { start: 0, end: 0 },
+    _isNode: true,
+  };
+}
+
 // wrapper for comments
 export type Commented<T> = {
   data: T;
@@ -585,7 +594,10 @@ const function_header_with_parameters = rule<
   Commented<FunctionHeader>
 >();
 const function_header = rule<TokenKind, Commented<FunctionHeader>>();
-const parameter_declarator = rule<TokenKind, Commented<ParameterDeclarator>>();
+export const parameter_declarator = rule<
+  TokenKind,
+  Commented<ParameterDeclarator>
+>();
 const parameter_declaration = rule<
   TokenKind,
   Commented<ParameterDeclaration>

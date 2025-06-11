@@ -31,6 +31,10 @@ export function tryParseGLSLRaw<T>(
   return result;
 }
 
+export function parseWith<T>(str: string, parser: Parser<TokenKind, T>) {
+  return tryParseGLSLRaw(lexGLSL(str).unsafeExpectSuccess(), parser);
+}
+
 export function parseGLSLFragmentWithoutPreprocessing<T>(
   source: string,
   parser: Parser<TokenKind, T>

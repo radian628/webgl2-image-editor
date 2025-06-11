@@ -3,7 +3,7 @@ import { lexGLSL, tryParseGLSLRaw } from "./parser-combined";
 import { Parser } from "typescript-parsec";
 import { TokenKind } from "./lexer";
 import { renameSymbols } from "./glsl-ast-utils";
-import { FormatGLSLPacked } from "./fmt-packed";
+import { FormatGLSLPacked } from "./formatter/fmt-packed";
 import { expression, statement, translation_unit } from "./parser";
 
 function renameRoundtrip<T>(
