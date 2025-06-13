@@ -1,5 +1,5 @@
 // this is horrible why am i doing this
-export class ArrayMap<K extends any, V> {
+export class ArrayMap<K, V, Arr extends [K, ...K[]] = [K, ...K[]]> {
   maps: Map<number, Map<any, any>>;
   constructor() {
     this.maps = new Map();
@@ -14,7 +14,7 @@ export class ArrayMap<K extends any, V> {
     return map;
   }
 
-  get(path: [K, ...K[]]): V | undefined {
+  get(path: Arr): V | undefined {
     let map = this.nthMap(path.length);
     for (const p of path) {
       map = map.get(p);
@@ -24,7 +24,7 @@ export class ArrayMap<K extends any, V> {
     return map;
   }
 
-  delete(path: [K, ...K[]]): V | undefined {
+  delete(path: Arr): V | undefined {
     let map = this.nthMap(path.length);
     for (const p of path.slice(0, -1)) {
       map = map.get(p);
@@ -35,7 +35,7 @@ export class ArrayMap<K extends any, V> {
     return item;
   }
 
-  change(path: [K, ...K[]], cb: (v: V | undefined) => V) {
+  change(path: Arr, cb: (v: V | undefined) => V) {
     let map = this.nthMap(path.length);
     for (const p of path.slice(0, -1)) {
       let oldMap = map;
@@ -48,11 +48,11 @@ export class ArrayMap<K extends any, V> {
     map.set(path.at(-1), cb(map.get(path.at(-1))));
   }
 
-  set(path: [K, ...K[]], value: V) {
+  set(path: Arr, value: V) {
     this.change(path, () => value);
   }
 
-  forEach(map: (path: [K, ...K[]], v: V) => void) {
+  forEach(map: (path: Arr, v: V) => void) {
     const r = (n: number, m: Map<any, any>, path: K[]) => {
       if (n === 0) {
         // @ts-expect-error

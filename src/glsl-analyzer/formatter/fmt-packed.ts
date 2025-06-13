@@ -139,6 +139,24 @@ export namespace FormatGLSLPacked {
       return functionPrototype(ed.data.prototype) + statement(ed.data.body);
     }
 
+    if (ed.data.type === "import") {
+      const from = `from"${ed.data.from}";`;
+      if (ed.data.imports.data.type === "all") {
+        if (ed.data.imports.data.prefix) {
+          return `import*as ${ed.data.imports.data.prefix} ${from}`;
+        }
+        return `import*${from}`;
+      }
+      return `import{${ed.data.imports.data.imports
+        .map((i) => {
+          if (i.data.alias) {
+            return `${i.data.name} as ${i.data.alias}`;
+          }
+          return i.data.name;
+        })
+        .join(",")}}${from}`;
+    }
+
     return declaration(ed.data.decl);
   }
 

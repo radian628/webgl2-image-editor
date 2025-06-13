@@ -11,6 +11,7 @@ export enum TokenKind {
   IntegerOctal,
   IntegerHex,
   Float,
+  ImportString,
 }
 
 export const lexer = buildLexer([
@@ -51,4 +52,6 @@ export const lexer = buildLexer([
     TokenKind.Float,
   ],
   [true, /^[0-9]+[eE][\+\-][0-9]+[fF]?/g, TokenKind.Float],
+  // import strings
+  [true, /^"[^"]*"/g, TokenKind.ImportString],
 ]);

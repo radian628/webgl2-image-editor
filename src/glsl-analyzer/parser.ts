@@ -270,10 +270,31 @@ export type ExternalDeclarationDeclaration = {
   decl: Commented<Declaration>;
   _isExtDecl: true;
 };
+export type SingleItemImport = {
+  name: string;
+  alias?: string;
+};
+
+export type Imports =
+  | {
+      type: "all";
+      prefix: string;
+    }
+  | {
+      type: "some";
+      imports: ASTNode<SingleItemImport>[];
+    };
+
+export type ExternalDeclarationImport = {
+  type: "import";
+  from: string;
+  imports: Commented<Imports>;
+};
 
 export type ExternalDeclaration =
   | ExternalDeclarationFunction
-  | ExternalDeclarationDeclaration;
+  | ExternalDeclarationDeclaration
+  | ExternalDeclarationImport;
 
 export type ASTNode<T> = {
   data: T;
@@ -1974,8 +1995,95 @@ translation_unit.setPattern(
   )
 );
 
+const import_option: Parser<
+  TokenKind,
+  ASTNode<SingleItemImport>
+> = nodeify_commented(
+  commentify(
+    seq(
+      tok(TokenKind.Identifier),
+      opt_sc(
+        seq(
+          comment_parser,
+          str("as"),
+          comment_parser,
+          tok(TokenKind.Identifier)
+        )
+      )
+    ),
+    (s) =>
+      ({ name: s[0].text, alias: s[1]?.[3].text } satisfies SingleItemImport),
+    (s) => (s[1] ? [s[1][0], s[1][2]] : [])
+  )
+);
+
+const import_decl: Parser<
+  TokenKind,
+  ASTNode<ExternalDeclarationImport>
+> = nodeify_commented(
+  commentify(
+    seq(
+      str("import"),
+      comment_parser,
+      alt_sc(
+        commentify(
+          seq(
+            str("*"),
+            opt_sc(
+              seq(
+                comment_parser,
+                str("as"),
+                comment_parser,
+                tok(TokenKind.Identifier)
+              )
+            )
+          ),
+          (s) =>
+            ({ type: "all", prefix: s[1]?.[3]?.text ?? "" } satisfies Imports),
+          (s) => (s[1] ? [s[1][0], s[1][2]] : [])
+        ),
+        commentify(
+          seq(
+            str("{"),
+            opt_sc(
+              seq(
+                import_option,
+                rep_sc(seq(comment_parser, str(","), import_option))
+              )
+            ),
+            comment_parser,
+            str("}")
+          ),
+          (s) =>
+            ({
+              type: "some",
+              imports: s[1]
+                ? [s[1][0], ...(s[1][1].map((e) => e[2]) ?? [])]
+                : [],
+            } satisfies Imports),
+          (s) => [...(s[1]?.[1].map((s) => s[0]) ?? []), s[2]]
+        )
+      ),
+      comment_parser,
+      str("from"),
+      comment_parser,
+      tok(TokenKind.ImportString),
+      comment_parser,
+      str(";")
+    ),
+    (s) =>
+      ({
+        type: "import",
+        imports: s[2],
+        from: s[6].text.slice(1, -1),
+      } satisfies ExternalDeclarationImport),
+    (s) => [s[1], s[5], s[7]]
+  )
+);
+
 external_declaration.setPattern(
   alt_sc(
+    import_decl,
     function_definition,
     nodeify(
       apply(declaration, (s) => ({

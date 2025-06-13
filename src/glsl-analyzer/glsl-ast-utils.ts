@@ -227,3 +227,102 @@ export function renameSymbols<T>(t: T, rename: (s: string) => string) {
 
   return mapAST(t, { expr, stmt, decl, extDecl, struct });
 }
+
+export function renameGlobalSymbols(
+  t: TranslationUnit,
+  rename: (str: string) => string
+): TranslationUnit {
+  return lens(t).data.$e((e) =>
+    e.data.$m("type", {
+      function: (e) => e.prototype.data.name.data.$(rename),
+      declaration: (e) =>
+        e.decl.data.$m("type", {
+          struct: (e) =>
+            e.$p((s) => ({
+              name: s.name.$f.data.$(rename),
+              name2: s.name.$f.data.$(rename),
+            })),
+          "declarator-list": (e) =>
+            e.declaratorList.data.declarations.data.$e((d) =>
+              d.data.name.data.$(rename)
+            ),
+          "function-prototype": (e) => e.prototype.data.name.data.$(rename),
+          $d: delens,
+        }),
+      import: delens,
+    })
+  );
+}
+
+export function getAllSymbolsDefinedByStmt(s: ASTNode<Stmt>): string[] {
+  switch (s.data.type) {
+    case "declaration": {
+      const d = s.data.decl.data;
+      switch (d.type) {
+        case "declarator-list":
+          return d.declaratorList.data.declarations.data.map(
+            (d) => d.data.name.data
+          );
+        case "function-prototype":
+          return [d.prototype.data.name.data];
+        case "struct":
+          return [d.name.data, ...(d.name2 ? [d.name2.data] : [])];
+        case "type-qualifier":
+          return [];
+        case "type-specifier":
+          return [];
+      }
+    }
+    default:
+      return [];
+  }
+}
+
+export function getAllSymbolsDefinedInsideStmt(s: ASTNode<Stmt>): string[] {
+  switch (s.data.type) {
+    case "compound":
+      return s.data.statements.flatMap((s) => getAllSymbolsDefinedByStmt(s));
+    case "for":
+      return [...getAllSymbolsDefinedByStmt(s.data.init)];
+    case "switch":
+      return s.data.stmts.flatMap((s) => getAllSymbolsDefinedByStmt(s));
+    default:
+      return [];
+  }
+}
+
+export function getAllStatementsInsideStmt(s: ASTNode<Stmt>): ASTNode<Stmt>[] {
+  switch (s.data.type) {
+    case "break":
+      return [];
+    case "case":
+      return [];
+    case "compound":
+      return s.data.statements;
+    case "continue":
+      return [];
+    case "declaration":
+      return [];
+    case "default-case":
+      return [];
+    case "discard":
+      return [];
+    case "do-while":
+      return [s.data.body];
+    case "expr":
+      return [];
+    case "for":
+      return [s.data.init, s.data.body];
+    case "return":
+      return [];
+    case "selection":
+      return [
+        s.data.rest.data.if,
+        ...(s.data.rest.data.else ? [s.data.rest.data.else] : []),
+      ];
+    case "switch":
+      return s.data.stmts;
+    case "while":
+      return [s.data.body];
+  }
+}

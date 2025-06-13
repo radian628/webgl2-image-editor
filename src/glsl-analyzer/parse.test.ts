@@ -263,6 +263,26 @@ roundtripExtDecl(
   "void main(){float x = 1.0; x += 1.0;}",
   "void main(){float x=1.0;x+=1.0;}"
 );
+roundtripExtDecl('import * from "test";', 'import*from"test";');
+roundtripExtDecl('import * as poop from "test";', 'import*as poop from"test";');
+roundtripExtDecl('import {} from "test";', 'import{}from"test";');
+roundtripExtDecl('import { a } from "test";', 'import{a}from"test";');
+roundtripExtDecl('import { a as b } from "test";', 'import{a as b}from"test";');
+roundtripExtDecl('import { a, b } from "test";', 'import{a,b}from"test";');
+roundtripExtDecl('import { a, b, c } from "test";', 'import{a,b,c}from"test";');
+roundtripExtDecl(
+  'import { a as b, c as d } from "test";',
+  'import{a as b,c as d}from"test";'
+);
+roundtripExtDecl(
+  'import { a, c as d } from "test";',
+  'import{a,c as d}from"test";'
+);
+roundtripExtDecl(
+  'import { a as b, c } from "test";',
+  'import{a as b,c}from"test";'
+);
+
 roundtripDecl("uniform float test;", "uniform float test;");
 roundtripDecl("uniform sampler2D test;", "uniform sampler2D test;");
 roundtripDecl(

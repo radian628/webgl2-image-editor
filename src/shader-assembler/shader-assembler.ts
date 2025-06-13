@@ -1,9 +1,10 @@
-import { getFunctions } from "../glsl-analyzer/glsl-ast-utils";
+import { getFunctions, renameSymbols } from "../glsl-analyzer/glsl-ast-utils";
 import {
   AssignmentOperator,
   ASTNode,
   Commented,
   CompoundStmt,
+  declaration,
   Declaration,
   dummyNode,
   Expr,
@@ -27,8 +28,14 @@ import { Table } from "../utils/table";
 import { makeFancyFormatter } from "../glsl-analyzer/formatter/fmt-fancy";
 import { id, lens } from "../utils/lens";
 
-export type NodeTemplateFunction = {
+export type GLSLSource = {
+  id: number;
+  name: string;
   src: TranslationUnit;
+};
+
+export type NodeTemplateFunction = {
+  srcId: number;
   fnName: string;
   id: number;
 };
@@ -121,10 +128,10 @@ function identifier(name: string): ASTNode<Expr> {
   });
 }
 
-function simpleAssignment(
+function variableDefinition(
   left: FullySpecifiedType,
   name: string,
-  right: ASTNode<Expr>
+  right?: ASTNode<Expr>
 ): ASTNode<Stmt> {
   return dummyNode<Stmt>({
     type: "declaration",
@@ -139,10 +146,12 @@ function simpleAssignment(
         declarations: dummyNode<Commented<SingleDeclaration>[]>([
           dummyNode<SingleDeclaration>({
             name: dummyNode(name),
-            variant: dummyNode({
-              type: "initialized",
-              initializer: right,
-            }),
+            variant: right
+              ? dummyNode({
+                  type: "initialized",
+                  initializer: right,
+                })
+              : undefined,
           }),
         ]),
       }),
@@ -173,7 +182,63 @@ function assignment(
   });
 }
 
+function rename<T>(ast: T, extantSymbols: Set<string>): T {
+  const newSymbols = new Set<string>();
+
+  function renameSymbol(t: string, num?: number) {
+    const s = num === undefined ? t : `${t}_${num}`;
+    if (extantSymbols.has(s)) {
+      return renameSymbol(t, (num ?? -1) + 1);
+    }
+    newSymbols.add(t);
+    return s;
+  }
+
+  const result = renameSymbols(ast, (s) => renameSymbol(s));
+  for (const s of newSymbols) extantSymbols.add(s);
+  return result;
+}
+
+function toposort(
+  nodes: Table<ShaderGraphNode>,
+  edges: Table<ShaderGraphEdge>
+): ShaderGraphNode[] {
+  const out: ShaderGraphNode[] = [];
+  const remainingNodes = nodes
+    .get()
+    .filter((n) => edges.filter.targetId(n.id).get().length === 0);
+
+  const markedEdges = new Set<ShaderGraphEdge>();
+
+  while (remainingNodes.length > 0) {
+    const n = remainingNodes.shift()!;
+    out.push(n);
+
+    const edgesFromN = edges.filter.sourceId(n.id).get();
+    const nodesFromN = [
+      ...new Set(edgesFromN.flatMap((e) => nodes.filter.id(e.targetId).get())),
+    ];
+
+    for (const m of nodesFromN) {
+      const edgesFromNToM = edges.filter
+        .sourceId(n.id)
+        .filter.targetId(m.id)
+        .get();
+      for (const edge of edgesFromNToM) {
+        markedEdges.add(edge);
+      }
+      const edgesToM = edges.filter.targetId(m.id).get();
+      if (edgesToM.every((e) => markedEdges.has(e))) {
+        remainingNodes.push(m);
+      }
+    }
+  }
+
+  return [...out];
+}
+
 export function assembleComposition(params: {
+  sources: Table<GLSLSource>;
   functions: Table<NodeTemplateFunction>;
   inputs: Table<NodeTemplateInput>;
   outputs: Table<NodeTemplateOutput>;
@@ -182,18 +247,26 @@ export function assembleComposition(params: {
   nodes: Table<ShaderGraphNode>;
   edges: Table<ShaderGraphEdge>;
   fnName: string;
+  globalSymbolRemappings?: Map<string, string>;
 }): Result<string, string> {
-  const { functions, fnName, inputs, outputs, nodes, edges, templates } =
-    params;
+  const {
+    functions,
+    fnName,
+    inputs,
+    outputs,
+    nodes,
+    edges,
+    templates,
+    sources,
+  } = params;
+
+  const globalSymbolRemappings =
+    params.globalSymbolRemappings ?? new Map<string, string>();
 
   let outprog: TranslationUnit = {
     data: [],
     comments: [],
   };
-
-  for (const f of functions) {
-    outprog.data = outprog.data.concat(f.src.data);
-  }
 
   const inputParams: Commented<ParameterDeclaration>[] = [...inputs]
     .flatMap((i) => i.inputs)
@@ -238,106 +311,111 @@ export function assembleComposition(params: {
 
   const statements = fn.data.body.data.statements;
 
-  let pendingEdges: ShaderGraphEdge[] = [];
+  const sortedNodes = toposort(nodes, edges);
 
-  for (const n of nodes) {
+  for (const n of sortedNodes) {
     const template = templates.filter.id(n.templateId).getOne();
-    if (template.inputId === undefined) continue;
-    const nextEdges = edges.filter.sourceId(n.id).get();
-    pendingEdges.push(...nextEdges);
-  }
-
-  const incompleteNodes = new Set<ShaderGraphNode>([...nodes]);
-
-  for (const n of incompleteNodes) {
-    const template = templates.filter.id(n.templateId).getOne();
-    if (template.inputId !== undefined) incompleteNodes.delete(n);
-  }
-
-  const completeEdges = new Set<ShaderGraphEdge>();
-
-  const cachedFunctionCallVariables = new Map<number, string>();
-
-  while (pendingEdges.length > 0) {
-    const edge = pendingEdges.shift()!;
-    completeEdges.add(edge);
-
-    const src = nodes.filter.id(edge.sourceId).getOne();
-    const srcTemplate = templates.filter.id(src.templateId).getOne();
-    if (srcTemplate.inputId !== undefined) {
-      const input = inputs.filter.id(srcTemplate.inputId).getOne();
-      statements.push(
-        simpleAssignment(
-          {
-            specifier: input.inputs.find(
-              (i) => i.declarator.data.identifier.data === edge.sourceInput
-            )!.declarator.data.typeSpecifier,
-          },
-          `_${edge.id}`,
-          identifier(edge.sourceInput)
-        )
-      );
-    } else if (srcTemplate.functionId !== undefined) {
-      const fn = functions.filter.id(srcTemplate.functionId).getOne();
-      const fnDef = getFunctions(fn.src).find(
-        (f) => f.data.prototype.data.name.data === fn.fnName
-      )!;
-      if (edge.sourceInput === "return value") {
+    if (template.inputId !== undefined) {
+      const inputTemplate = inputs.filter.id(template.inputId).getOne();
+      for (const i of inputTemplate.inputs) {
         statements.push(
-          simpleAssignment(
-            fnDef.data.prototype.data.fullySpecifiedType.data,
-            `_${edge.id}`,
-            functionCall(
-              fn.fnName,
-              (fnDef.data.prototype.data.parameters?.data ?? []).map((p) => {
-                const varName = edges.filter
-                  .targetId(edge.sourceId)
-                  .filter.targetInput(
-                    lens(p).data.declaratorOrSpecifier.$g<string>((f) =>
-                      f.type === "declarator"
-                        ? lens(f).declarator.data.identifier.data.$g(id)
-                        : ""
-                    )
-                  )
-                  .getOne().id;
+          variableDefinition(
+            {
+              specifier: i.declarator.data.typeSpecifier,
+            },
+            `_${n.id}_${i.declarator.data.identifier.data}`,
+            identifier(i.declarator.data.identifier.data)
+          )
+        );
+      }
+    } else if (template.functionId !== undefined) {
+      const functionTemplate = functions.filter
+        .id(template.functionId)
+        .getOne();
+      const src = sources.filter.id(functionTemplate.srcId).getOne();
+      const fn = getFunctions(src.src).find(
+        (fn) => fn.data.prototype.data.name.data === functionTemplate.fnName
+      )!;
 
-                return identifier(`_${varName}`);
-              })
+      const inputEdges = edges.filter
+        .targetId(n.id)
+        .get()
+        .map((edge) => {
+          return { edge, node: nodes.filter.id(edge.sourceId).getOne() };
+        });
+
+      const args = (fn.data.prototype.data.parameters?.data ?? []).map((p) => {
+        if (p.data.declaratorOrSpecifier.type === "specifier")
+          throw new Error();
+        else {
+          const declarator = p.data.declaratorOrSpecifier.declarator;
+          if (p.data.parameterQualifier?.data === "out") {
+            const name = `_${n.id}_${declarator.data.identifier.data}`;
+            statements.push(
+              variableDefinition(
+                { specifier: declarator.data.typeSpecifier },
+                name
+              )
+            );
+            return identifier(name);
+          } else {
+            const { node, edge } = inputEdges.find(
+              (e) => e.edge.targetInput === declarator.data.identifier.data
+            )!;
+            return identifier(
+              `_${node.id}_${
+                edge.sourceInput === "return value"
+                  ? "retval"
+                  : edge.sourceInput
+              }`
+            );
+          }
+        }
+      });
+
+      const fncall = functionCall(functionTemplate.fnName, args);
+
+      const typeName =
+        fn.data.prototype.data.fullySpecifiedType.data.specifier.data.specifier
+          .data.typeName.data;
+
+      if (typeName.type === "builtin" && typeName.name.data === "void") {
+        statements.push(exprStatement(fncall));
+      } else {
+        statements.push(
+          variableDefinition(
+            fn.data.prototype.data.fullySpecifiedType.data,
+            `_${n.id}_retval`,
+            fncall
+          )
+        );
+      }
+    } else if (template.outputId !== undefined) {
+      const outputTemplate = outputs.filter.id(template.outputId).getOne();
+
+      for (const o of outputTemplate.outputs) {
+        const edge = edges.filter
+          .targetId(n.id)
+          .filter.targetInput(o.declarator.data.identifier.data)
+          .getOne();
+        const srcNode = nodes.filter.id(edge.sourceId).getOne();
+
+        statements.push(
+          exprStatement(
+            assignment(
+              identifier(o.declarator.data.identifier.data),
+              "=",
+              identifier(
+                `_${srcNode.id}_${
+                  edge.sourceInput === "return value"
+                    ? "retval"
+                    : edge.sourceInput
+                }`
+              )
             )
           )
         );
       }
-    }
-
-    for (const n of incompleteNodes) {
-      const incoming = edges.filter.targetId(n.id).get();
-      if (incoming.every((n) => completeEdges.has(n))) {
-        const outgoing = edges.filter.sourceId(n.id).get();
-        pendingEdges.push(...outgoing);
-        incompleteNodes.delete(n);
-      }
-    }
-  }
-
-  for (const n of nodes) {
-    const template = templates.filter.id(n.templateId).getOne();
-    if (template.outputId === undefined) continue;
-    const o = outputs.filter.id(template.outputId).getOne();
-    for (const o2 of o.outputs) {
-      const outputEdge = edges.filter
-        .targetId(n.id)
-        .filter.targetInput(o2.declarator.data.identifier.data)
-        .getOne();
-
-      statements.push(
-        exprStatement(
-          assignment(
-            identifier(o2.declarator.data.identifier.data),
-            "=",
-            identifier(`_${outputEdge.id}`)
-          )
-        )
-      );
     }
   }
 
