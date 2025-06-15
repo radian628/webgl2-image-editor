@@ -27,6 +27,11 @@ import { err, ok, Result } from "../utils/result";
 import { Table } from "../utils/table";
 import { makeFancyFormatter } from "../glsl-analyzer/formatter/fmt-fancy";
 import { id, lens } from "../utils/lens";
+import {
+  bundleShaders,
+  BundleShadersReturnType,
+  ResolvedPath,
+} from "../glsl-analyzer/shader-bundler/shader-bundler";
 
 export type GLSLSource = {
   id: number;
@@ -248,7 +253,7 @@ export function assembleComposition(params: {
   edges: Table<ShaderGraphEdge>;
   fnName: string;
   globalSymbolRemappings?: Map<string, string>;
-}): Result<string, string> {
+}): Result<TranslationUnit, string> {
   const {
     functions,
     fnName,
@@ -260,8 +265,7 @@ export function assembleComposition(params: {
     sources,
   } = params;
 
-  const globalSymbolRemappings =
-    params.globalSymbolRemappings ?? new Map<string, string>();
+  const globalSymbolRemappings = new Map<string, string>();
 
   let outprog: TranslationUnit = {
     data: [],
@@ -373,7 +377,20 @@ export function assembleComposition(params: {
         }
       });
 
-      const fncall = functionCall(functionTemplate.fnName, args);
+      const importPrefix = `__${functionTemplate.srcId.toString()}_`;
+
+      outprog.data.push(
+        dummyNode({
+          type: "import",
+          from: functionTemplate.srcId.toString(),
+          imports: dummyNode({
+            type: "all",
+            prefix: importPrefix,
+          }),
+        })
+      );
+
+      const fncall = functionCall(importPrefix + functionTemplate.fnName, args);
 
       const typeName =
         fn.data.prototype.data.fullySpecifiedType.data.specifier.data.specifier
@@ -421,7 +438,53 @@ export function assembleComposition(params: {
 
   outprog.data.push(fn);
 
-  return ok(makeFancyFormatter(Infinity).translationUnit(outprog));
+  // return ok(makeFancyFormatter(Infinity).translationUnit(outprog));
+
+  return ok(outprog);
+}
+
+export async function assembleAndBundleComposition(
+  ...[params]: Parameters<typeof assembleComposition>
+): Promise<Result<BundleShadersReturnType, string>> {
+  const result = assembleComposition(params).mapS(async (t) => {
+    const sources = params.sources.get();
+
+    const sourceMap = new Map(sources.map((s) => [s.id.toString(), s.src]));
+
+    return await bundleShaders({
+      entryPoint: "composition",
+      resolvePath(path): Promise<ResolvedPath> {
+        if (path == "composition") {
+          return Promise.resolve(
+            ok({
+              type: "ast",
+              unit: t,
+            })
+          );
+        } else {
+          const unit = sourceMap.get(path);
+          if (!unit) {
+            return Promise.resolve(err(`Not found.`));
+          }
+          return Promise.resolve(ok({ type: "ast", unit }));
+        }
+      },
+      mainFunctionName: params.fnName,
+    });
+  });
+
+  if (result.data.success) {
+    return await result.data.data;
+  }
+  return err("Failed to compile.");
+}
+
+export async function assembleAndBundleAndStringifyComposition(
+  ...[params]: Parameters<typeof assembleComposition>
+): Promise<Result<string, string>> {
+  return (await assembleAndBundleComposition(params)).mapS((e) => {
+    return makeFancyFormatter(Infinity, 2).translationUnit(e.code);
+  });
 }
 
 export function assembleShader(graph: ShaderGraph) {}

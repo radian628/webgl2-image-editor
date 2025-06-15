@@ -11,6 +11,7 @@ import {
   translation_unit,
 } from "../glsl-analyzer/parser";
 import {
+  assembleAndBundleAndStringifyComposition,
   assembleComposition,
   GLSLSource,
   NodeTemplate,
@@ -170,7 +171,7 @@ function makeNodesAndEdges(data: GraphNode[]): {
   };
 }
 
-test("repeated inputs", () => {
+test("repeated inputs", async () => {
   const inputs: Template = { type: "input", inputs: ["float in1"] };
   const outputs: Template = { type: "output", outputs: ["float out1"] };
   const add: Template = {
@@ -191,20 +192,26 @@ test("repeated inputs", () => {
     inputs: { out1: [addNode, "return value"] },
   };
 
-  const composition = assembleComposition({
-    ...makeNodesAndEdges([inputNode, addNode, outputNode]),
-    fnName: "test",
-    sources: makeSourceTable(`float add(float a, float b) { return a + b; }`),
-  }).unsafeExpectSuccess();
+  const composition = (
+    await assembleAndBundleAndStringifyComposition({
+      ...makeNodesAndEdges([inputNode, addNode, outputNode]),
+      fnName: "test",
+      sources: makeSourceTable(`float add(float a, float b) { return a + b; }`),
+    })
+  ).unsafeExpectSuccess();
 
-  expect(composition).toBe(`void test(in float in1, out float out1) {
+  expect(composition).toBe(`float add(float a, float b) {
+  return a + b;
+}
+
+void test(in float in1, out float out1) {
   float _0_in1 = in1;
   float _1_retval = add(_0_in1, _0_in1);
   out1 = _1_retval;
 }`);
 });
 
-test("repeated outputs", () => {
+test("repeated outputs", async () => {
   const inputs: Template = { type: "input", inputs: ["float in1"] };
   const square: Template = {
     type: "function",
@@ -233,14 +240,19 @@ test("repeated outputs", () => {
     },
   };
 
-  const composition = assembleComposition({
-    ...makeNodesAndEdges([inputNode, squareNode, outputNode]),
-    fnName: "test",
-    sources: makeSourceTable(`float square(float x) { return x * x; }`),
-  }).unsafeExpectSuccess();
+  const composition = (
+    await assembleAndBundleAndStringifyComposition({
+      ...makeNodesAndEdges([inputNode, squareNode, outputNode]),
+      fnName: "test",
+      sources: makeSourceTable(`float square(float x) { return x * x; }`),
+    })
+  ).unsafeExpectSuccess();
 
-  expect(composition)
-    .toBe(`void test(in float in1, out float out1, out float out2) {
+  expect(composition).toBe(`float square(float x) {
+  return x * x;
+}
+
+void test(in float in1, out float out1, out float out2) {
   float _0_in1 = in1;
   float _1_retval = square(_0_in1);
   out1 = _1_retval;
@@ -248,7 +260,7 @@ test("repeated outputs", () => {
 }`);
 });
 
-test("simple assemble composition", () => {
+test("simple assemble composition", async () => {
   const inputs: Template = {
     type: "input",
     inputs: ["float in1", "float in2"],
@@ -289,25 +301,34 @@ test("simple assemble composition", () => {
     inputs: { out1: [addNode, "return value"] },
   };
 
-  const composition = assembleComposition({
-    ...makeNodesAndEdges([
-      inputNode,
-      squareNode1,
-      squareNode2,
-      addNode,
-      outputNode,
-    ]),
-    sources: makeSourceTable(`
-      
+  const composition = (
+    await assembleAndBundleAndStringifyComposition({
+      ...makeNodesAndEdges([
+        inputNode,
+        squareNode1,
+        squareNode2,
+        addNode,
+        outputNode,
+      ]),
+      sources: makeSourceTable(`
+
     float add(float a, float b) { return a + b; }
     float square(float x) { return x * x; }
-      
-      `),
-    fnName: "distSquared",
-  }).unsafeExpectSuccess();
 
-  expect(composition)
-    .toBe(`void distSquared(in float in1, in float in2, out float out1) {
+      `),
+      fnName: "distSquared",
+    })
+  ).unsafeExpectSuccess();
+
+  expect(composition).toBe(`float add(float a, float b) {
+  return a + b;
+}
+
+float square(float x) {
+  return x * x;
+}
+
+void distSquared(in float in1, in float in2, out float out1) {
   float _0_in1 = in1;
   float _0_in2 = in2;
   float _1_retval = square(_0_in1);
@@ -317,7 +338,7 @@ test("simple assemble composition", () => {
 }`);
 });
 
-test("output params + void fn", () => {
+test("output params + void fn", async () => {
   const inputs: Template = {
     type: "input",
     inputs: ["float in1"],
@@ -341,15 +362,21 @@ test("output params + void fn", () => {
     inputs: { out1: [squareNode, "y"] },
   };
 
-  const composition = assembleComposition({
-    ...makeNodesAndEdges([inputNode, squareNode, outputNode]),
-    fnName: "test",
-    sources: makeSourceTable(
-      `void square(float x, out float y) { y = x * x; }`
-    ),
-  }).unsafeExpectSuccess();
+  const composition = (
+    await assembleAndBundleAndStringifyComposition({
+      ...makeNodesAndEdges([inputNode, squareNode, outputNode]),
+      fnName: "test",
+      sources: makeSourceTable(
+        `void square(float x, out float y) { y = x * x; }`
+      ),
+    })
+  ).unsafeExpectSuccess();
 
-  expect(composition).toBe(`void test(in float in1, out float out1) {
+  expect(composition).toBe(`void square(float x, out float y) {
+  y = x * x;
+}
+
+void test(in float in1, out float out1) {
   float _0_in1 = in1;
   float _1_y;
   square(_0_in1, _1_y);
@@ -357,7 +384,7 @@ test("output params + void fn", () => {
 }`);
 });
 
-test("namespace collision", () => {
+test("namespace collision", async () => {
   const inputs: Template = {
     type: "input",
     inputs: ["float in1"],
@@ -385,16 +412,22 @@ test("namespace collision", () => {
     inputs: { out1: [squareNode, "y"] },
   };
 
-  const composition = assembleComposition({
-    ...makeNodesAndEdges([inputNode, squareNode, outputNode]),
-    sources,
-    fnName: "test",
-  }).unsafeExpectSuccess();
+  const composition = (
+    await assembleAndBundleAndStringifyComposition({
+      ...makeNodesAndEdges([inputNode, squareNode, outputNode]),
+      sources,
+      fnName: "test",
+    })
+  ).unsafeExpectSuccess();
 
-  expect(composition).toBe(`void test(in float in1, out float out1) {
-  float _0_in1_2 = in1;
+  expect(composition).toBe(`void _0_in1(float x, out float y) {
+  y = x * x;
+}
+
+void test(in float in1, out float out1) {
+  float _0_in1_0 = in1;
   float _1_y;
-  _0_in1(_0_in1_2, _1_y);
+  _0_in1(_0_in1_0, _1_y);
   out1 = _1_y;
 }`);
 });
