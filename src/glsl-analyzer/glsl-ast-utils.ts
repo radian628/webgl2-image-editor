@@ -228,7 +228,7 @@ export function renameSymbols<T>(t: T, rename: (s: string) => string) {
   return mapAST(t, { expr, stmt, decl, extDecl, struct });
 }
 
-export function renameGlobalSymbols(
+export function mapGlobalSymbols(
   t: TranslationUnit,
   rename: (str: string) => string
 ): TranslationUnit {
@@ -254,41 +254,41 @@ export function renameGlobalSymbols(
   );
 }
 
-export function getAllSymbolsDefinedByStmt(s: ASTNode<Stmt>): string[] {
-  switch (s.data.type) {
-    case "declaration": {
-      const d = s.data.decl.data;
-      switch (d.type) {
-        case "declarator-list":
-          return d.declaratorList.data.declarations.data.map(
-            (d) => d.data.name.data
-          );
-        case "function-prototype":
-          return [d.prototype.data.name.data];
-        case "struct":
-          return [d.name.data, ...(d.name2 ? [d.name2.data] : [])];
-        case "type-qualifier":
-          return [];
-        case "type-specifier":
-          return [];
-      }
-    }
-    default:
-      return [];
-  }
+export function mapAllSymbolsDefinedByStmt(
+  s: ASTNode<Stmt>,
+  rename: (str: string) => string
+): ASTNode<Stmt> {
+  return lens(s).data.$m("type", {
+    declaration: (s) =>
+      s.decl.data.$m("type", {
+        "declarator-list": (d) =>
+          d.declaratorList.data.declarations.data.$e((d) =>
+            d.data.name.data.$(rename)
+          ),
+        "function-prototype": (d) => d.prototype.data.name.data.$(rename),
+        struct: (d) => ({
+          ...d.$(id),
+          name: d.name.$f.data.$(rename),
+          name2: d.name2.$f.data.$(rename),
+        }),
+        $d: delens,
+      }),
+    $d: delens,
+  });
 }
 
-export function getAllSymbolsDefinedInsideStmt(s: ASTNode<Stmt>): string[] {
-  switch (s.data.type) {
-    case "compound":
-      return s.data.statements.flatMap((s) => getAllSymbolsDefinedByStmt(s));
-    case "for":
-      return [...getAllSymbolsDefinedByStmt(s.data.init)];
-    case "switch":
-      return s.data.stmts.flatMap((s) => getAllSymbolsDefinedByStmt(s));
-    default:
-      return [];
-  }
+export function mapAllSymbolsDefinedInsideStmt(
+  s: ASTNode<Stmt>,
+  rename: (str: string) => string
+): ASTNode<Stmt> {
+  return lens(s).data.$m("type", {
+    compound: (s) =>
+      s.statements.$e((s) => mapAllSymbolsDefinedByStmt(s.$(id), rename)),
+    for: (s) => s.init.$((s) => mapAllSymbolsDefinedByStmt(s, rename)),
+    switch: (s) =>
+      s.stmts.$e((s) => mapAllSymbolsDefinedByStmt(s.$(id), rename)),
+    $d: delens,
+  });
 }
 
 export function getAllStatementsInsideStmt(s: ASTNode<Stmt>): ASTNode<Stmt>[] {
@@ -326,3 +326,62 @@ export function getAllStatementsInsideStmt(s: ASTNode<Stmt>): ASTNode<Stmt>[] {
       return [s.data.body];
   }
 }
+
+export function mapAllSymbolsDefinedInsideExtDecl(
+  ed: ASTNode<ExternalDeclaration>,
+  rename: (s: string) => string
+) {
+  return lens(ed).data.$m("type", {
+    function: (e) =>
+      e.prototype.data.parameters.data.$e((p) =>
+        p.data.declaratorOrSpecifier.$m("type", {
+          declarator: (d) => d.declarator.data.identifier.data.$(rename),
+          $d: delens,
+        })
+      ),
+    $d: delens,
+  });
+}
+
+export function mapAllSymbolsDefinedByExtDecl(
+  ed: ASTNode<ExternalDeclaration>,
+  rename: (s: string) => string
+) {
+  return lens(ed).data.$m("type", {
+    function: (e) => e.prototype.data.name.data.$(rename),
+    declaration: (e) =>
+      e.decl.data.$m("type", {
+        "declarator-list": (d) =>
+          d.declaratorList.data.declarations.data.$e((d) =>
+            d.data.name.data.$(rename)
+          ),
+        "function-prototype": (d) => d.prototype.data.name.data.$(rename),
+        struct: (d) => ({
+          ...d.$(id),
+          name: d.name.$f.data.$(rename),
+          name2: d.name2.$f.data.$(rename),
+        }),
+        $d: delens,
+      }),
+    $d: delens,
+  });
+}
+
+export function mapAllStatementsInsideExtDecl(
+  ed: ASTNode<ExternalDeclaration>,
+  map: (s: ASTNode<Stmt>) => ASTNode<Stmt>
+): ASTNode<ExternalDeclaration> {
+  return lens(ed).data.$m("type", {
+    function: (f) => f.body.data.statements.$e((s) => s.$(map)),
+    $d: delens,
+  });
+}
+
+// export function mapAllStatementsInsideStatement(
+//   s: ASTNode<Stmt>,
+//   map: (s: ASTNode<Stmt>) => ASTNode<Stmt>
+// ): ASTNode<Stmt> {
+//   return lens(s).data.$m("type", {
+
+//   })
+// }

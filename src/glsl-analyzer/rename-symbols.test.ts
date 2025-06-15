@@ -78,3 +78,4 @@ renameTransUnit("struct a{float a;};", "struct b{float a;};");
 renameTransUnit("struct a{float a;}a;", "struct b{float a;}b;");
 renameTransUnit("vec4 a[a];", "vec4 b[b];");
 renameTransUnit("uniform float a;", "uniform float b;");
+renameTransUnit("void x(){float a;}", "void x(){float b;}");
