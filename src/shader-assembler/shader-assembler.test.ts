@@ -11,7 +11,6 @@ import {
   translation_unit,
 } from "../glsl-analyzer/parser";
 import {
-  assembleAndBundleAndStringifyComposition,
   assembleComposition,
   GLSLSource,
   NodeTemplate,
@@ -21,6 +20,7 @@ import {
   NodeTemplateOutput,
   ShaderGraphEdge,
   ShaderGraphNode,
+  assembleAndBundleAndStringifyComposition,
 } from "./shader-assembler";
 import { table, Table, tableWithData } from "../utils/table";
 
@@ -78,14 +78,14 @@ type GraphNode = {
   id?: number;
 };
 
-function makeNodesAndEdges(data: GraphNode[]): {
-  nodes: Table<ShaderGraphNode>;
-  edges: Table<ShaderGraphEdge>;
-  inputs: Table<NodeTemplateInput>;
-  outputs: Table<NodeTemplateOutput>;
+function makeNodesAndEdges(
+  data: GraphNode[],
+  compositionId: string
+): {
   functions: Table<NodeTemplateFunction>;
   templates: Table<NodeTemplate>;
   compositions: Table<NodeTemplateComposition>;
+  compositionId: string;
 } {
   let edgeCount = 0;
   const templates2 = [...new Set(data.map((d) => d.template))];
@@ -141,33 +141,38 @@ function makeNodesAndEdges(data: GraphNode[]): {
   }
 
   return {
-    inputs: tableWithData(inputs),
-    outputs: tableWithData(outputs),
     functions: tableWithData(functions),
     templates: tableWithData(templates),
-    nodes: tableWithData(
-      data.map(
-        (d, i) => (
-          (d.id = i),
-          {
-            id: i,
-            templateId: templateToId.get(d.template)!,
-          }
-        )
-      )
-    ),
-    edges: tableWithData(
-      data.flatMap((d, i) =>
-        Object.entries(d.inputs).map(([k, v]) => ({
-          sourceId: v[0].id!,
-          sourceInput: v[1],
-          targetId: i,
-          targetInput: k,
-          id: edgeCount++,
-        }))
-      )
-    ),
-    compositions: tableWithData<NodeTemplateComposition>([]),
+    compositionId,
+    compositions: tableWithData<NodeTemplateComposition>([
+      {
+        id: compositionId,
+        inputs: tableWithData(inputs),
+        outputs: tableWithData(outputs),
+        nodes: tableWithData(
+          data.map(
+            (d, i) => (
+              (d.id = i),
+              {
+                id: i,
+                templateId: templateToId.get(d.template)!,
+              }
+            )
+          )
+        ),
+        edges: tableWithData(
+          data.flatMap((d, i) =>
+            Object.entries(d.inputs).map(([k, v]) => ({
+              sourceId: v[0].id!,
+              sourceInput: v[1],
+              targetId: i,
+              targetInput: k,
+              id: edgeCount++,
+            }))
+          )
+        ),
+      },
+    ]),
   };
 }
 
@@ -194,8 +199,7 @@ test("repeated inputs", async () => {
 
   const composition = (
     await assembleAndBundleAndStringifyComposition({
-      ...makeNodesAndEdges([inputNode, addNode, outputNode]),
-      fnName: "test",
+      ...makeNodesAndEdges([inputNode, addNode, outputNode], "test"),
       sources: makeSourceTable(`float add(float a, float b) { return a + b; }`),
     })
   ).unsafeExpectSuccess();
@@ -242,8 +246,8 @@ test("repeated outputs", async () => {
 
   const composition = (
     await assembleAndBundleAndStringifyComposition({
-      ...makeNodesAndEdges([inputNode, squareNode, outputNode]),
-      fnName: "test",
+      ...makeNodesAndEdges([inputNode, squareNode, outputNode], "test"),
+      compositionId: "test",
       sources: makeSourceTable(`float square(float x) { return x * x; }`),
     })
   ).unsafeExpectSuccess();
@@ -303,20 +307,17 @@ test("simple assemble composition", async () => {
 
   const composition = (
     await assembleAndBundleAndStringifyComposition({
-      ...makeNodesAndEdges([
-        inputNode,
-        squareNode1,
-        squareNode2,
-        addNode,
-        outputNode,
-      ]),
+      ...makeNodesAndEdges(
+        [inputNode, squareNode1, squareNode2, addNode, outputNode],
+        "distSquared"
+      ),
       sources: makeSourceTable(`
 
     float add(float a, float b) { return a + b; }
     float square(float x) { return x * x; }
 
       `),
-      fnName: "distSquared",
+      compositionId: "distSquared",
     })
   ).unsafeExpectSuccess();
 
@@ -364,8 +365,8 @@ test("output params + void fn", async () => {
 
   const composition = (
     await assembleAndBundleAndStringifyComposition({
-      ...makeNodesAndEdges([inputNode, squareNode, outputNode]),
-      fnName: "test",
+      ...makeNodesAndEdges([inputNode, squareNode, outputNode], "test"),
+      compositionId: "test",
       sources: makeSourceTable(
         `void square(float x, out float y) { y = x * x; }`
       ),
@@ -414,9 +415,9 @@ test("namespace collision", async () => {
 
   const composition = (
     await assembleAndBundleAndStringifyComposition({
-      ...makeNodesAndEdges([inputNode, squareNode, outputNode]),
+      ...makeNodesAndEdges([inputNode, squareNode, outputNode], "test"),
       sources,
-      fnName: "test",
+      compositionId: "test",
     })
   ).unsafeExpectSuccess();
 

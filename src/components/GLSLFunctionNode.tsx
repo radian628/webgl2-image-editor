@@ -16,11 +16,20 @@ import {
   getParameters,
 } from "../glsl-analyzer/glsl-ast-utils";
 
-type GLSLFunctionNodeData = {
-  src: string;
-};
+type GLSLFunctionNodeData =
+  | {
+      type: "raw";
+      src: string;
+    }
+  | {
+      type: "from-source";
+      fnName: string;
+    };
 
-export type GLSLFunctionNodeType = Node<GLSLFunctionNodeData>;
+export type GLSLFunctionNodeType = Node<
+  GLSLFunctionNodeData,
+  "GLSLFunctionNode"
+>;
 
 export default function GLSLFunctionNode(
   props: NodeProps<GLSLFunctionNodeType>
@@ -28,14 +37,19 @@ export default function GLSLFunctionNode(
   const rf = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
 
+  useEffect(() => {
+    updateNodeInternals(props.id);
+  }, [props.data]);
+
+  if (props.data.type === "from-source") {
+    return <></>;
+  }
+
   const ast = parseGLSLWithoutPreprocessing(props.data.src);
 
   let handles = (<></>) as JSX.Element;
 
   if (ast.data.success) {
-    // const params = getFunctions(ast.data.data.translationUnit).map((fn) =>
-    //   getParameters(fn)
-    // )[0];
     const fn = getFunctions(ast.data.data.translationUnit)[0];
     const inputs = getNamedInputParameters(fn);
     const outputs = getNamedOutputParameters(fn);
@@ -67,10 +81,6 @@ export default function GLSLFunctionNode(
       </>
     );
   }
-
-  useEffect(() => {
-    updateNodeInternals(props.id);
-  }, [props.data.src]);
 
   return (
     <div className="graph-node glsl-function-node">

@@ -1,0 +1,9 @@
+.glsl-editor-container .cm-editor {
+  height: 100%;
+}
+
+.glsl-editor-container {
+  height: 100%;
+  color: white;
+  overflow: auto;
+}

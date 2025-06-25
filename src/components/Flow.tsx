@@ -16,33 +16,54 @@ import "@xyflow/react/dist/style.css";
 import { useCallback, useRef, useState } from "react";
 import React from "react";
 import GLSLFunctionNode, { GLSLFunctionNodeType } from "./GLSLFunctionNode";
+import TextureNode, { TextureNodeType } from "./TextureNode";
+import MeshDataNode, { MeshDataNodeType } from "./MeshDataNode";
+import RasterizerNode, { RasterizerNodeType } from "./RasterizerNode";
+import UniformNode, { UniformNodeType } from "./UniformNode";
 
-const initialNodes: GLSLFunctionNodeType[] = [
+const initialNodes: CustomNode[] = [
   {
     id: "1",
     type: "GLSLFunctionNode",
-    data: { src: "float add(float a, float b) {\n  return a + b;\n}" },
+    data: {
+      src: "float add(float a, float b) {\n  return a + b;\n}",
+      type: "raw",
+    },
     position: { x: 250, y: 25 },
   },
   {
     id: "2",
     type: "GLSLFunctionNode",
-    data: { src: "float add(float a, float b) {\n  return a + b;\n}" },
+    data: {
+      src: "float add(float a, float b) {\n  return a + b;\n}",
+      type: "raw",
+    },
     position: { x: 250, y: 250 },
   },
 ];
+
+export type CustomNode =
+  | GLSLFunctionNodeType
+  | TextureNodeType
+  | MeshDataNodeType
+  | RasterizerNodeType
+  | UniformNodeType;
 
 const initialEdges: Edge[] = [];
 
 const nodeTypes = {
   GLSLFunctionNode,
+  TextureNode,
+  MeshDataNode,
+  RasterizerNode,
+  UniformNode,
 };
 
 function Flow() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
 
-  const onNodesChange: OnNodesChange<GLSLFunctionNodeType> = useCallback(
+  const onNodesChange: OnNodesChange<CustomNode> = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
     [setNodes]
   );

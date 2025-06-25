@@ -24,7 +24,7 @@ import {
 } from "../glsl-analyzer/parser";
 import { FormatGLSLPacked } from "../glsl-analyzer/formatter/fmt-packed";
 import { err, ok, Result } from "../utils/result";
-import { Table } from "../utils/table";
+import { Table, tableWithData } from "../utils/table";
 import { makeFancyFormatter } from "../glsl-analyzer/formatter/fmt-fancy";
 import { id, lens } from "../utils/lens";
 import {
@@ -66,15 +66,16 @@ export type NodeTemplateOutput = {
 export type NodeTemplateComposition = {
   nodes: Table<ShaderGraphNode>;
   edges: Table<ShaderGraphEdge>;
-  inputs: () => string[];
-  outputs: () => string[];
+  inputs: Table<NodeTemplateInput>;
+  outputs: Table<NodeTemplateOutput>;
+  id: string;
 };
 
 export type NodeTemplate = {
   functionId?: number;
   inputId?: number;
   outputId?: number;
-  compositionId?: number;
+  compositionId?: string;
   id: number;
 };
 
@@ -245,25 +246,21 @@ function toposort(
 export function assembleComposition(params: {
   sources: Table<GLSLSource>;
   functions: Table<NodeTemplateFunction>;
-  inputs: Table<NodeTemplateInput>;
-  outputs: Table<NodeTemplateOutput>;
+  // inputs: Table<NodeTemplateInput>;
+  // outputs: Table<NodeTemplateOutput>;
   compositions: Table<NodeTemplateComposition>;
   templates: Table<NodeTemplate>;
-  nodes: Table<ShaderGraphNode>;
-  edges: Table<ShaderGraphEdge>;
-  fnName: string;
-  globalSymbolRemappings?: Map<string, string>;
-}): Result<TranslationUnit, string> {
-  const {
-    functions,
-    fnName,
-    inputs,
-    outputs,
-    nodes,
-    edges,
-    templates,
-    sources,
-  } = params;
+  // nodes: Table<ShaderGraphNode>;
+  // edges: Table<ShaderGraphEdge>;
+  compositionId: string;
+  extantCompositions?: Map<string, TranslationUnit>;
+}): Result<{ id: string; unit: TranslationUnit }[], string> {
+  const { functions, templates, sources, compositions } = params;
+
+  const comp = params.compositions.filter.id(params.compositionId).getOne();
+
+  const { inputs, outputs, nodes, edges } = comp;
+  const fnName = comp.id;
 
   const globalSymbolRemappings = new Map<string, string>();
 
@@ -271,6 +268,10 @@ export function assembleComposition(params: {
     data: [],
     comments: [],
   };
+
+  const extantCompositions =
+    params.extantCompositions ?? new Map<string, TranslationUnit>();
+  extantCompositions.set(params.compositionId, outprog);
 
   const inputParams: Commented<ParameterDeclaration>[] = [...inputs]
     .flatMap((i) => i.inputs)
@@ -433,14 +434,32 @@ export function assembleComposition(params: {
           )
         );
       }
+    } else if (template.compositionId !== undefined) {
+      const compositionTemplate = compositions.filter
+        .id(template.compositionId)
+        .getOne();
+
+      if (!extantCompositions.has(compositionTemplate.id)) {
+        const assembledComposition = assembleComposition({
+          ...params,
+          compositionId: compositionTemplate.id,
+          extantCompositions,
+        });
+
+        if (assembledComposition.data.success === false) {
+          return err("Failed to assemble composition");
+        }
+
+        for (const c of assembledComposition.data.data) {
+          extantCompositions.set(c.id, c.unit);
+        }
+      }
     }
   }
 
   outprog.data.push(fn);
 
-  // return ok(makeFancyFormatter(Infinity).translationUnit(outprog));
-
-  return ok(outprog);
+  return ok([...extantCompositions].map(([id, unit]) => ({ id, unit })));
 }
 
 export async function assembleAndBundleComposition(
@@ -451,25 +470,22 @@ export async function assembleAndBundleComposition(
 
     const sourceMap = new Map(sources.map((s) => [s.id.toString(), s.src]));
 
+    const compositionMap = new Map(t.map(({ id, unit }) => [id, unit]));
+
     return await bundleShaders({
-      entryPoint: "composition",
+      entryPoint: params.compositionId,
       resolvePath(path): Promise<ResolvedPath> {
-        if (path == "composition") {
-          return Promise.resolve(
-            ok({
-              type: "ast",
-              unit: t,
-            })
-          );
-        } else {
-          const unit = sourceMap.get(path);
-          if (!unit) {
-            return Promise.resolve(err(`Not found.`));
-          }
-          return Promise.resolve(ok({ type: "ast", unit }));
+        const comp = compositionMap.get(path);
+        if (comp) {
+          return Promise.resolve(ok({ type: "ast", unit: comp }));
         }
+        const unit = sourceMap.get(path);
+        if (!unit) {
+          return Promise.resolve(err(`Not found.`));
+        }
+        return Promise.resolve(ok({ type: "ast", unit }));
       },
-      mainFunctionName: params.fnName,
+      mainFunctionName: params.compositionId,
     });
   });
 
@@ -484,6 +500,29 @@ export async function assembleAndBundleAndStringifyComposition(
 ): Promise<Result<string, string>> {
   return (await assembleAndBundleComposition(params)).mapS((e) => {
     return makeFancyFormatter(Infinity, 2).translationUnit(e.code);
+  });
+}
+
+export async function generateStandaloneComposition(
+  params: Parameters<typeof assembleComposition>[0] & {
+    inputs: Table<NodeTemplateInput>;
+    outputs: Table<NodeTemplateOutput>;
+    nodes: Table<ShaderGraphNode>;
+    edges: Table<ShaderGraphEdge>;
+  }
+) {
+  const { inputs, outputs, nodes, edges, compositionId } = params;
+  return await assembleAndBundleAndStringifyComposition({
+    ...params,
+    compositions: tableWithData([
+      {
+        inputs,
+        outputs,
+        nodes,
+        edges,
+        id: compositionId,
+      },
+    ]),
   });
 }
 
