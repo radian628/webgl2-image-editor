@@ -1,7 +1,12 @@
 import React, { useState } from "react";
-import { PanelLayoutData, PanelLayoutDataItem } from "./Panels";
+import {
+  PanelLayoutData,
+  PanelLayoutDataItem,
+  usePanelDragContext,
+} from "./Panels";
 import { v4 } from "uuid";
 import "./PanelMenu.css";
+import { lens } from "../../utils/lens";
 
 export function PanelMenu<T>(props: {
   index: number;
@@ -12,18 +17,26 @@ export function PanelMenu<T>(props: {
 }) {
   const [state, setState] = useState<"normal" | "open">("normal");
 
-  function splitSameAxis(right: boolean) {
+  const [dragItem, setDragItem] = usePanelDragContext<T>();
+
+  function splitSameAxis(right: boolean, newItemData?: PanelLayoutDataItem<T>) {
     const proportion = props.panels[props.index].proportion;
     const panels2 = [...props.panels];
     const newItems: PanelLayoutData<T> = [
-      {
-        variant: {
-          type: "data",
-          data: props.newPanelState,
-        },
-        id: v4(),
-        proportion: proportion / 2,
-      },
+      newItemData
+        ? {
+            ...newItemData,
+            id: v4(),
+            proportion: proportion / 2,
+          }
+        : {
+            variant: {
+              type: "data",
+              data: props.newPanelState,
+            },
+            id: v4(),
+            proportion: proportion / 2,
+          },
       {
         ...props.panels[props.index],
         proportion: proportion / 2,
@@ -34,7 +47,7 @@ export function PanelMenu<T>(props: {
     props.setPanels((panels) => panels2);
   }
 
-  function splitDiffAxis(right: boolean) {
+  function splitDiffAxis(right: boolean, newItemData?: PanelLayoutDataItem<T>) {
     const panels2 = [...props.panels];
     const newPanelItem = {
       id: v4(),
@@ -42,14 +55,20 @@ export function PanelMenu<T>(props: {
       variant: {
         type: "nested",
         subpanels: [
-          {
-            variant: {
-              type: "data",
-              data: props.newPanelState,
-            },
-            id: v4(),
-            proportion: 0.5,
-          },
+          newItemData
+            ? {
+                ...newItemData,
+                id: v4(),
+                proportion: 0.5,
+              }
+            : {
+                variant: {
+                  type: "data",
+                  data: props.newPanelState,
+                },
+                id: v4(),
+                proportion: 0.5,
+              },
           {
             ...props.panels[props.index],
             proportion: 0.5,
@@ -60,6 +79,44 @@ export function PanelMenu<T>(props: {
     if (right) newPanelItem.variant.subpanels.reverse();
     panels2.splice(props.index, 1, newPanelItem);
     props.setPanels((panels) => panels2);
+  }
+
+  if (dragItem) {
+    return (
+      <div className="drag-menu">
+        <div
+          className="drag-target drag-target-left"
+          onMouseUp={(e) => {
+            (props.inVertical ? splitDiffAxis : splitSameAxis)(false, dragItem);
+            setDragItem((p) => undefined);
+          }}
+        ></div>
+        <div
+          className="drag-target drag-target-right"
+          onMouseUp={(e) => {
+            (props.inVertical ? splitDiffAxis : splitSameAxis)(true, dragItem);
+            setDragItem((p) => undefined);
+          }}
+        ></div>
+        <div
+          className="drag-target drag-target-up"
+          onMouseUp={(e) => {
+            (!props.inVertical ? splitDiffAxis : splitSameAxis)(
+              false,
+              dragItem
+            );
+            setDragItem((p) => undefined);
+          }}
+        ></div>
+        <div
+          className="drag-target drag-target-down"
+          onMouseUp={(e) => {
+            (!props.inVertical ? splitDiffAxis : splitSameAxis)(true, dragItem);
+            setDragItem((p) => undefined);
+          }}
+        ></div>
+      </div>
+    );
   }
 
   if (state === "open") {
@@ -113,6 +170,15 @@ export function PanelMenu<T>(props: {
     );
   }
 
+  function exit() {
+    const panels2 = [...props.panels];
+    panels2.splice(props.index, 1);
+    const sum = panels2.reduce((prev, curr) => prev + curr.proportion, 0);
+    props.setPanels((panels) =>
+      panels2.map((p) => ({ ...p, proportion: p.proportion / sum }))
+    );
+  }
+
   return (
     <div className="panel-menu">
       <button
@@ -122,6 +188,23 @@ export function PanelMenu<T>(props: {
       >
         +
       </button>
+      <button
+        className="exit-button"
+        onClick={(e) => {
+          exit();
+        }}
+      >
+        X
+      </button>
+      <div
+        className="drag-handle"
+        onMouseDown={(e) => {
+          setDragItem((p) => props.panels[props.index]);
+          exit();
+        }}
+      >
+        Drag
+      </div>
     </div>
   );
 }

@@ -1,6 +1,14 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+  createContext,
+  createRef,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { JSX } from "react";
 import "./Panels.css";
+import { lens } from "../../utils/lens";
 
 export type PanelLayoutDataItem<T> = {
   proportion: number;
@@ -18,14 +26,16 @@ export type PanelLayoutDataItem<T> = {
 
 export type PanelLayoutData<T> = PanelLayoutDataItem<T>[];
 
-export type PanelComponent<T> = (props: {
+export type PanelComponentProps<T> = {
   data: T;
   setData: (d: T) => void;
   panels: PanelLayoutData<T>;
   setPanels: (f: (p: PanelLayoutData<T>) => PanelLayoutData<T>) => void;
   index: number;
   inVertical: boolean;
-}) => JSX.Element;
+};
+
+export type PanelComponent<T> = (props: PanelComponentProps<T>) => JSX.Element;
 
 function PanelLayoutItem<T>(props: {
   panels: PanelLayoutData<T>;
@@ -55,15 +65,6 @@ function PanelLayoutItem<T>(props: {
         let delta = deltaInPixels / rootLength;
         tempDeltaRef.current += delta;
         props.setPanels((panels) => {
-          // if (
-          //   panels[i].proportion + delta < 0 ||
-          //   panels[i + 1].proportion - delta < 0
-          // ) {
-          //   accumulatedDelta.current += delta;
-          //   delta = 0;
-          //   console.log(accumulatedDelta.current);
-          // }
-
           let totalDelta = Math.min(
             Math.max(tempDeltaRef.current, -oldProportionRefPrev.current),
             oldProportionRef.current
@@ -196,11 +197,95 @@ function PanelLayout<T>(props: {
   );
 }
 
+function killSinglets<T>(data: PanelLayoutData<T>): PanelLayoutData<T> {
+  return data.map((d) =>
+    d.variant.type === "nested"
+      ? d.variant.subpanels.length === 1
+        ? lens(killSinglets(d.variant.subpanels)[0]).proportion.$(
+            (n) => d.proportion
+          )
+        : {
+            ...d,
+            variant: {
+              ...d.variant,
+              subpanels: killSinglets(d.variant.subpanels),
+            },
+          }
+      : d
+  );
+}
+
+export const PanelDragContext = createContext<{
+  dragItem: PanelLayoutDataItem<any> | undefined;
+  setDragItem: (
+    fn: (
+      p: PanelLayoutDataItem<any> | undefined
+    ) => PanelLayoutDataItem<any> | undefined
+  ) => void;
+}>(undefined as any);
+
+export function usePanelDragContext<T>(): [
+  PanelLayoutDataItem<T> | undefined,
+  (
+    fn: (
+      p: PanelLayoutDataItem<T> | undefined
+    ) => PanelLayoutDataItem<T> | undefined
+  ) => void
+] {
+  const { dragItem, setDragItem } = useContext(PanelDragContext);
+  return [dragItem, setDragItem] as const;
+}
+
 export function RootPanelLayout<T>(props: {
   panels: PanelLayoutData<T>;
   setPanels: React.Dispatch<React.SetStateAction<PanelLayoutData<T>>>;
   panelComponent: PanelComponent<T>;
   vertical: boolean;
+  defaultEmptyConfiguration: PanelLayoutData<T>;
 }) {
-  return <PanelLayout {...props}></PanelLayout>;
+  const [dragItem, setDragItem] = useState<PanelLayoutDataItem<T> | undefined>(
+    undefined
+  );
+
+  const dragGhostRef = createRef<HTMLDivElement>();
+
+  useEffect(() => {
+    console.log("got here", dragItem);
+    if (dragItem) {
+      document.body.style.cursor = "grabbing";
+    } else {
+      document.body.style.cursor = "default";
+    }
+
+    if (dragGhostRef.current) {
+      const dragGhost = dragGhostRef.current;
+      const listener = (e: MouseEvent) => {
+        dragGhost.style.left = `${e.clientX + 20}px`;
+        dragGhost.style.top = `${e.clientY}px`;
+      };
+      document.addEventListener("mousemove", listener);
+      return () => document.removeEventListener("mousemove", listener);
+    }
+  }, [dragItem]);
+
+  return (
+    <PanelDragContext.Provider value={{ dragItem, setDragItem }}>
+      <PanelLayout
+        panels={props.panels}
+        setPanels={(cb) => {
+          const panels = killSinglets(cb(props.panels));
+          props.setPanels(
+            panels.length === 0 ? props.defaultEmptyConfiguration : panels
+          );
+        }}
+        panelComponent={props.panelComponent}
+        vertical={props.vertical}
+      ></PanelLayout>
+      {dragItem && (
+        <div className="drag-ghost" ref={dragGhostRef}>
+          Dragging Panel
+        </div>
+      )}
+    </PanelDragContext.Provider>
+  );
 }

@@ -1,0 +1,9 @@
+.show-all-select-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.show-all-select-field .selected {
+  background-color: black;
+  color: white;
+}
