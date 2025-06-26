@@ -201,6 +201,7 @@ test("repeated inputs", async () => {
     await assembleAndBundleAndStringifyComposition({
       ...makeNodesAndEdges([inputNode, addNode, outputNode], "test"),
       sources: makeSourceTable(`float add(float a, float b) { return a + b; }`),
+      isTopLevel: false,
     })
   ).unsafeExpectSuccess();
 
@@ -249,6 +250,7 @@ test("repeated outputs", async () => {
       ...makeNodesAndEdges([inputNode, squareNode, outputNode], "test"),
       compositionId: "test",
       sources: makeSourceTable(`float square(float x) { return x * x; }`),
+      isTopLevel: false,
     })
   ).unsafeExpectSuccess();
 
@@ -318,6 +320,7 @@ test("simple assemble composition", async () => {
 
       `),
       compositionId: "distSquared",
+      isTopLevel: false,
     })
   ).unsafeExpectSuccess();
 
@@ -370,6 +373,7 @@ test("output params + void fn", async () => {
       sources: makeSourceTable(
         `void square(float x, out float y) { y = x * x; }`
       ),
+      isTopLevel: false,
     })
   ).unsafeExpectSuccess();
 
@@ -418,6 +422,7 @@ test("namespace collision", async () => {
       ...makeNodesAndEdges([inputNode, squareNode, outputNode], "test"),
       sources,
       compositionId: "test",
+      isTopLevel: false,
     })
   ).unsafeExpectSuccess();
 
@@ -430,5 +435,60 @@ void test(in float in1, out float out1) {
   float _1_y;
   _0_in1(_0_in1_0, _1_y);
   out1 = _1_y;
+}`);
+});
+
+test("top level", async () => {
+  const inputs: Template = {
+    type: "input",
+    inputs: ["float in1"],
+  };
+  const outputs: Template = { type: "output", outputs: ["float out1"] };
+  const square: Template = {
+    type: "function",
+    srcId: 0,
+    fnName: "square",
+  };
+
+  const inputNode = { template: inputs, inputs: {} };
+
+  const squareNode: GraphNode = {
+    template: square,
+    inputs: { x: [inputNode, "in1"] },
+  };
+
+  const outputNode: GraphNode = {
+    template: outputs,
+    inputs: { out1: [squareNode, "y"] },
+  };
+
+  const composition = (
+    await assembleAndBundleAndStringifyComposition({
+      ...makeNodesAndEdges([inputNode, squareNode, outputNode], "test"),
+      compositionId: "test",
+      sources: makeSourceTable(
+        `void square(float x, out float y) { y = x * x; }`
+      ),
+      isTopLevel: true,
+    })
+  ).unsafeExpectSuccess();
+
+  expect(composition).toBe(`in float in1;
+
+out float out1;
+
+void square(float x, out float y) {
+  y = x * x;
+}
+
+void test(in float in1, out float out1) {
+  float _0_in1 = in1;
+  float _1_y;
+  square(_0_in1, _1_y);
+  out1 = _1_y;
+}
+
+void main() {
+  test(in1, out1);
 }`);
 });

@@ -9,6 +9,7 @@ import {
   dummyNode,
   Expr,
   ExternalDeclaration,
+  ExternalDeclarationDeclaration,
   ExternalDeclarationFunction,
   FullySpecifiedType,
   InitDeclaratorList,
@@ -20,6 +21,7 @@ import {
   Stmt,
   TranslationUnit,
   TypeNoPrec,
+  TypeQualifier,
   TypeSpecifier,
 } from "../glsl-analyzer/parser";
 import { FormatGLSLPacked } from "../glsl-analyzer/formatter/fmt-packed";
@@ -243,6 +245,41 @@ function toposort(
   return [...out];
 }
 
+function makeGlobalInputOrOutput(
+  ip: Commented<ParameterDeclaration>,
+  qualifier: "in" | "out"
+) {
+  return {
+    type: "declaration",
+    _isExtDecl: true,
+    decl: dummyNode<Declaration>({
+      _isDecl: true,
+      type: "declarator-list",
+      declaratorList: dummyNode<InitDeclaratorList>({
+        init: dummyNode<SingleDeclarationStart>({
+          type: "type",
+          declType: dummyNode<FullySpecifiedType>({
+            specifier: (ip.data.declaratorOrSpecifier.type === "declarator"
+              ? ip.data.declaratorOrSpecifier.declarator.data.typeSpecifier
+              : undefined)!,
+            qualifier: dummyNode<TypeQualifier>({
+              type: "sq",
+              storageQualifier: dummyNode(qualifier),
+            }),
+          }),
+        }),
+        declarations: dummyNode([
+          dummyNode({
+            name: (ip.data.declaratorOrSpecifier.type === "declarator"
+              ? ip.data.declaratorOrSpecifier.declarator.data.identifier
+              : undefined)!,
+          }),
+        ]),
+      }),
+    }),
+  } satisfies ExternalDeclaration;
+}
+
 export function assembleComposition(params: {
   sources: Table<GLSLSource>;
   functions: Table<NodeTemplateFunction>;
@@ -254,8 +291,9 @@ export function assembleComposition(params: {
   // edges: Table<ShaderGraphEdge>;
   compositionId: string;
   extantCompositions?: Map<string, TranslationUnit>;
+  isTopLevel: boolean;
 }): Result<{ id: string; unit: TranslationUnit }[], string> {
-  const { functions, templates, sources, compositions } = params;
+  const { functions, templates, sources, compositions, isTopLevel } = params;
 
   const comp = params.compositions.filter.id(params.compositionId).getOne();
 
@@ -271,7 +309,6 @@ export function assembleComposition(params: {
 
   const extantCompositions =
     params.extantCompositions ?? new Map<string, TranslationUnit>();
-  extantCompositions.set(params.compositionId, outprog);
 
   const inputParams: Commented<ParameterDeclaration>[] = [...inputs]
     .flatMap((i) => i.inputs)
@@ -297,6 +334,61 @@ export function assembleComposition(params: {
         },
       })
     );
+
+  if (isTopLevel) {
+    const globalInputs: ASTNode<ExternalDeclaration>[] = inputParams.map((ip) =>
+      dummyNode(makeGlobalInputOrOutput(ip, "in"))
+    );
+    const globalOutputs: ASTNode<ExternalDeclaration>[] = outputParams.map(
+      (ip) => dummyNode(makeGlobalInputOrOutput(ip, "out"))
+    );
+
+    outprog.data.push(...globalInputs, ...globalOutputs);
+
+    outprog.data.push(
+      dummyNode<ExternalDeclarationFunction>({
+        type: "function",
+        prototype: dummyNode({
+          name: dummyNode("main"),
+          fullySpecifiedType: builtinType("void"),
+          parameters: dummyNode([] as Commented<ParameterDeclaration>[]),
+        }),
+        body: dummyNode<CompoundStmt>({
+          type: "compound",
+          statements: [
+            exprStatement(
+              functionCall(
+                params.compositionId,
+                inputParams
+                  .map((ip) =>
+                    identifier(
+                      (ip.data.declaratorOrSpecifier.type === "declarator"
+                        ? ip.data.declaratorOrSpecifier.declarator.data
+                            .identifier.data
+                        : undefined)!
+                    )
+                  )
+                  .concat(
+                    outputParams.map((ip) =>
+                      identifier(
+                        (ip.data.declaratorOrSpecifier.type === "declarator"
+                          ? ip.data.declaratorOrSpecifier.declarator.data
+                              .identifier.data
+                          : undefined)!
+                      )
+                    )
+                  )
+              )
+            ),
+          ],
+          _isStmt: true,
+        }),
+        _isExtDecl: true,
+      })
+    );
+  }
+
+  extantCompositions.set(params.compositionId, outprog);
 
   const fn: ASTNode<ExternalDeclarationFunction> =
     dummyNode<ExternalDeclarationFunction>({
@@ -525,5 +617,3 @@ export async function generateStandaloneComposition(
     ]),
   });
 }
-
-export function assembleShader(graph: ShaderGraph) {}

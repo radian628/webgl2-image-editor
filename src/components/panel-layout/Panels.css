@@ -1,0 +1,61 @@
+.panel-set {
+  display: flex;
+  align-items: stretch;
+}
+
+.panel {
+  position: relative;
+
+  > :nth-child(1) {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+}
+
+.panel-dragger {
+  position: absolute;
+  z-index: 2;
+  background-color: transparent;
+  transition: background-color 0.25s;
+}
+
+.panel-dragger:hover {
+  background-color: black;
+}
+
+.panel-set-horizontal {
+  flex-direction: row;
+  height: 100%;
+
+  > .panel {
+    height: 100%;
+
+    > .panel-dragger {
+      width: 10px;
+      height: 100%;
+      right: 0;
+      cursor: col-resize;
+      transform: translateX(50%);
+    }
+  }
+}
+
+.panel-set-vertical {
+  flex-direction: column;
+  width: 100%;
+
+  > .panel {
+    width: 100%;
+
+    > .panel-dragger {
+      width: 100%;
+      height: 10px;
+      bottom: 0;
+      cursor: row-resize;
+      transform: translateY(50%);
+    }
+  }
+}
