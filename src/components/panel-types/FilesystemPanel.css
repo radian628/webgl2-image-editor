@@ -1,0 +1,14 @@
+.filesystem-panel {
+  .directory-button {
+    cursor: pointer;
+  }
+
+  .directory-list {
+    list-style: none;
+    padding-left: 10px;
+    margin-left: 10px;
+    border-left: 1px solid black;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}

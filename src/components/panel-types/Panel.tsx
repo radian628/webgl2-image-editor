@@ -7,6 +7,7 @@ import {
 import { PanelContents, PanelSelector } from "./PanelSelector";
 import { PanelMenu } from "../panel-layout/PanelMenu";
 import "./Panel.css";
+import { FilesystemPanel } from "./FilesystemPanel";
 
 export const Panel: PanelComponent<PanelContents> = (
   props: PanelComponentProps<PanelContents>
@@ -32,6 +33,11 @@ export const Panel: PanelComponent<PanelContents> = (
       </div>
     ) : (
       <PanelSelector {...props}></PanelSelector>
+    )}
+    {props.data.type === "filesystem" ? (
+      <FilesystemPanel {...props} data={props.data}></FilesystemPanel>
+    ) : (
+      <></>
     )}
   </div>
 );
