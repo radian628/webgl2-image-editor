@@ -5,43 +5,60 @@ import {
   createVirtualFilesystem,
   FilesystemAdaptor,
 } from "../../filesystem/FilesystemAdaptor";
+import { EditorState } from "@codemirror/state";
+import { v4 } from "uuid";
 
 type FileReference = {
   path: string;
   fs: FilesystemAdaptor;
 };
 
-export type PanelContents =
+export type PanelContentsItem =
   | {
       type: "none";
+      id: string;
     }
   | {
       type: "filesystem";
       adaptor: FilesystemAdaptor | undefined;
       openDir: string | undefined;
+      id: string;
     }
   | {
       type: "shader-editor";
       file: FileReference | undefined;
+      id: string;
     }
   | {
       type: "pipeline-editor";
       file: FileReference | undefined;
+      id: string;
     }
   | {
       type: "image-preview";
+      file: FileReference | undefined;
+      id: string;
     }
   | {
       type: "text-editor";
       file: FileReference | undefined;
+      state?: EditorState;
+      id: string;
     };
 
-export type PanelContentsType<T extends PanelContents["type"]> =
-  PanelContents & { type: T };
+export type PanelType<T extends PanelContentsItem["type"]> =
+  PanelContentsItem & { type: T };
 
-export function PanelSelector(
-  props: PanelComponentProps<PanelContents> & { showAll?: boolean }
-) {
+export type PanelContents = {
+  items: PanelContentsItem[];
+  openIndex: number;
+};
+
+export function PanelSelector(props: {
+  showAll: boolean;
+  data: PanelContentsItem;
+  setData: (i: (i: PanelContentsItem) => PanelContentsItem) => void;
+}) {
   return (
     <div>
       <SelectField
@@ -56,17 +73,26 @@ export function PanelSelector(
         ]}
         setValue={(v) => {
           if (v === "none") {
-            props.setData({
+            props.setData((data) => ({
               type: "none",
-            });
+              id: v4(),
+            }));
           } else if (v === "filesystem") {
-            props.setData({
+            props.setData((data) => ({
               type: "filesystem",
+              id: v4(),
               adaptor: createVirtualFilesystem({
                 type: "dir",
                 name: "root",
                 contents: new Map([
-                  ["a", { type: "file", name: "a", contents: new Blob([]) }],
+                  [
+                    "a.ts",
+                    {
+                      type: "file",
+                      name: "a.ts",
+                      contents: new Blob(["test text file"]),
+                    },
+                  ],
                   [
                     "b",
                     {
@@ -88,26 +114,31 @@ export function PanelSelector(
                 ]),
               }),
               openDir: "root",
-            });
+            }));
           } else if (v === "shader-editor") {
-            props.setData({
+            props.setData((data) => ({
               type: "shader-editor",
               file: undefined,
-            });
+              id: v4(),
+            }));
           } else if (v === "image-preview") {
-            props.setData({
+            props.setData((data) => ({
               type: "image-preview",
-            });
+              file: undefined,
+              id: v4(),
+            }));
           } else if (v === "pipeline-editor") {
-            props.setData({
+            props.setData((data) => ({
               type: "pipeline-editor",
               file: undefined,
-            });
+              id: v4(),
+            }));
           } else if (v === "text-editor") {
-            props.setData({
+            props.setData((data) => ({
               type: "text-editor",
               file: undefined,
-            });
+              id: v4(),
+            }));
           }
         }}
         showAll={props.showAll}

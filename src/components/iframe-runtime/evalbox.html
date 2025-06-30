@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script>
+      window.addEventListener("message", async function (e) {
+        if (!e.data || e.data.type !== "exec") return;
+        await import(e.data.src);
+      });
+    </script>
+  </head>
+  <body></body>
+</html>

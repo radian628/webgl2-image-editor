@@ -4,6 +4,7 @@ export type FilesystemAdaptor = {
   readFile: (path: string) => Promise<Blob | undefined>;
   writeFile: (path: string, contents: Blob) => Promise<Blob | undefined>;
   getDefaultPath: () => Promise<string>;
+  watchFile: (path: string, callback: () => void) => () => void;
 };
 
 export type VirtualFilesystemTree =
@@ -37,7 +38,17 @@ function traverse(tree: VirtualFilesystemTree, path: string) {
 export function createVirtualFilesystem(
   tree: VirtualFilesystemTree
 ): FilesystemAdaptor {
+  const watchers = new Map<string, Set<() => void>>();
   return {
+    watchFile(path: string, callback: () => void) {
+      let callbacks = watchers.get(path);
+      if (!callbacks) {
+        callbacks = new Set();
+        watchers.set(path, callbacks);
+      }
+      callbacks.add(callback);
+      return () => callbacks.delete(callback);
+    },
     readDir(path: string) {
       const dir = traverse(tree, path);
       if (!dir || dir.type === "file") return Promise.resolve(undefined);
@@ -55,7 +66,7 @@ export function createVirtualFilesystem(
     },
     writeFile(path: string, contents: Blob) {
       let item = tree;
-      const splitPath = path.split("/");
+      const splitPath = path.split("/").slice(1);
 
       // traverse path to find item
       while (splitPath.length > 0) {
@@ -79,6 +90,9 @@ export function createVirtualFilesystem(
 
       if (item.type === "file") {
         item.contents = contents;
+        for (const w of watchers.get(path) ?? []) {
+          w();
+        }
         return Promise.resolve(contents);
       }
       return Promise.resolve(undefined);

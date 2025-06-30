@@ -11,7 +11,6 @@ export function Divider(props: {
     <div
       onMouseDown={() => {
         const mouseup = (e: MouseEvent) => {
-          console.log("why");
           document.removeEventListener("mouseup", mouseup);
           document.removeEventListener("mousemove", mousemove);
         };

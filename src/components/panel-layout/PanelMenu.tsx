@@ -8,7 +8,7 @@ import { v4 } from "uuid";
 import "./PanelMenu.css";
 import { lens } from "../../utils/lens";
 
-export function PanelMenu<T>(props: {
+export function PanelMenu<T, Drag>(props: {
   index: number;
   panels: PanelLayoutData<T>;
   setPanels: (f: (p: PanelLayoutData<T>) => PanelLayoutData<T>) => void;
@@ -17,7 +17,13 @@ export function PanelMenu<T>(props: {
 }) {
   const [state, setState] = useState<"normal" | "open">("normal");
 
-  const [dragItem, setDragItem] = usePanelDragContext<T>();
+  const {
+    dragItem,
+    setDragItem,
+    mergePanelWithDrag,
+    dragToPanel,
+    panelToDrag,
+  } = usePanelDragContext<T, Drag>();
 
   function splitSameAxis(right: boolean, newItemData?: PanelLayoutDataItem<T>) {
     const proportion = props.panels[props.index].proportion;
@@ -82,36 +88,55 @@ export function PanelMenu<T>(props: {
   }
 
   if (dragItem) {
+    const panel = dragToPanel(dragItem);
+
+    // TODO: handle case where it isn't draggable
+    if (!panel) return <></>;
+
     return (
       <div className="drag-menu">
         <div
           className="drag-target drag-target-left"
           onMouseUp={(e) => {
-            (props.inVertical ? splitDiffAxis : splitSameAxis)(false, dragItem);
+            (props.inVertical ? splitDiffAxis : splitSameAxis)(false, panel);
             setDragItem((p) => undefined);
           }}
         ></div>
         <div
           className="drag-target drag-target-right"
           onMouseUp={(e) => {
-            (props.inVertical ? splitDiffAxis : splitSameAxis)(true, dragItem);
+            (props.inVertical ? splitDiffAxis : splitSameAxis)(true, panel);
             setDragItem((p) => undefined);
           }}
         ></div>
         <div
           className="drag-target drag-target-up"
           onMouseUp={(e) => {
-            (!props.inVertical ? splitDiffAxis : splitSameAxis)(
-              false,
-              dragItem
-            );
+            (!props.inVertical ? splitDiffAxis : splitSameAxis)(false, panel);
             setDragItem((p) => undefined);
           }}
         ></div>
         <div
           className="drag-target drag-target-down"
           onMouseUp={(e) => {
-            (!props.inVertical ? splitDiffAxis : splitSameAxis)(true, dragItem);
+            (!props.inVertical ? splitDiffAxis : splitSameAxis)(true, panel);
+            setDragItem((p) => undefined);
+          }}
+        ></div>
+        <div
+          className="drag-target drag-target-center"
+          onMouseUp={(e) => {
+            const panels2 = [...props.panels];
+            const newPanel = mergePanelWithDrag(
+              props.panels[props.index],
+              dragItem
+            );
+            panels2.splice(props.index, 1, {
+              ...newPanel,
+              id: v4(),
+              proportion: props.panels[props.index].proportion,
+            });
+            props.setPanels(() => panels2);
             setDragItem((p) => undefined);
           }}
         ></div>
@@ -199,7 +224,7 @@ export function PanelMenu<T>(props: {
       <div
         className="drag-handle"
         onMouseDown={(e) => {
-          setDragItem((p) => props.panels[props.index]);
+          setDragItem((p) => panelToDrag(props.panels[props.index]));
           exit();
         }}
       >

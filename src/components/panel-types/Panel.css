@@ -9,3 +9,25 @@
     font-size: 200%;
   }
 }
+
+.panel-tabs {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  list-style: none;
+
+  li {
+    padding: 5px;
+    margin: 2px;
+    background-color: #fff3;
+  }
+
+  li:hover {
+    background-color: #fff6;
+  }
+
+  li.selected {
+    background-color: white;
+    color: black;
+  }
+}

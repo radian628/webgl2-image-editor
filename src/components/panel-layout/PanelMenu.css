@@ -96,7 +96,7 @@
     left: 0;
     width: 50%;
     height: 100%;
-    clip-path: polygon(0% 0%, 0% 100%, 100% 50%);
+    clip-path: polygon(0% 0%, 0% 100%, 50% 75%, 50% 25%);
   }
 
   .drag-target-right {
@@ -105,7 +105,7 @@
     left: 50%;
     width: 50%;
     height: 100%;
-    clip-path: polygon(100% 0%, 100% 100%, 0% 50%);
+    clip-path: polygon(100% 0%, 100% 100%, 50% 75%, 50% 25%);
   }
 
   .drag-target-up {
@@ -114,7 +114,7 @@
     left: 0;
     width: 100%;
     height: 50%;
-    clip-path: polygon(0% 0%, 100% 0%, 50% 100%);
+    clip-path: polygon(0% 0%, 100% 0%, 75% 50%, 25% 50%);
   }
 
   .drag-target-down {
@@ -123,6 +123,14 @@
     left: 0;
     width: 100%;
     height: 50%;
-    clip-path: polygon(0% 100%, 100% 100%, 50% 0%);
+    clip-path: polygon(0% 100%, 100% 100%, 75% 50%, 25% 50%);
+  }
+
+  .drag-target-center {
+    position: absolute;
+    top: 25%;
+    left: 25%;
+    width: 50%;
+    height: 50%;
   }
 }

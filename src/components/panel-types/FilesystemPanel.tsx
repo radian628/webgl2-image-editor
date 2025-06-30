@@ -1,8 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { PanelComponentProps } from "../panel-layout/Panels";
-import { PanelContents } from "./PanelSelector";
+import {
+  PanelComponent,
+  PanelComponentProps,
+  usePanelDragContext,
+} from "../panel-layout/Panels";
+import { PanelContents, PanelContentsItem, PanelType } from "./PanelSelector";
 import { FilesystemAdaptor } from "../../filesystem/FilesystemAdaptor";
 import "./FilesystemPanel.css";
+import { v4 } from "uuid";
+import { ImageEditorDragState } from "../ImageEditorPanels";
 
 export function FileOrDirDisplay(props: {
   fs: FilesystemAdaptor;
@@ -27,6 +33,23 @@ export function FileOrDirDisplay(props: {
         why?: string;
       }
   >();
+
+  const { dragItem, setDragItem } = usePanelDragContext<
+    PanelContents,
+    ImageEditorDragState
+  >();
+
+  const [clicking, setClicking] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (clicking) {
+      const listener = (e: MouseEvent) => {
+        setClicking(false);
+      };
+      document.addEventListener("mouseup", listener);
+      return () => document.removeEventListener("mouseup", listener);
+    }
+  }, [clicking]);
 
   const expanded = props.expandedMap.get(props.path);
 
@@ -70,7 +93,31 @@ export function FileOrDirDisplay(props: {
     );
 
   if (data.type === "file") {
-    return <div className="file-root">{data.name}</div>;
+    return (
+      <div
+        className="file-root"
+        onMouseDown={(e) => {
+          setClicking(true);
+        }}
+        onMouseMove={(e) => {
+          if (clicking) {
+            setDragItem((p) => ({
+              type: "item",
+              item: {
+                type: "text-editor",
+                file: {
+                  path: props.path,
+                  fs: props.fs,
+                },
+                id: v4(),
+              },
+            }));
+          }
+        }}
+      >
+        {data.name}
+      </div>
+    );
   }
 
   return (
@@ -107,13 +154,10 @@ export function FileOrDirDisplay(props: {
   );
 }
 
-export function FilesystemPanel(
-  props: PanelComponentProps<PanelContents> & {
-    data: {
-      type: "filesystem";
-    };
-  }
-) {
+export function FilesystemPanel(props: {
+  data: PanelType<"filesystem">;
+  setData: (d: (d: PanelContentsItem) => PanelType<"filesystem">) => void;
+}) {
   // map to keep track of which paths are expanded or not
   const [expandedMap, setExpandedMap] = useState<Map<string, boolean>>(
     new Map()

@@ -28,7 +28,7 @@ export type PanelLayoutData<T> = PanelLayoutDataItem<T>[];
 
 export type PanelComponentProps<T> = {
   data: T;
-  setData: (d: T) => void;
+  setData: (d: (d: T) => T) => void;
   panels: PanelLayoutData<T>;
   setPanels: (f: (p: PanelLayoutData<T>) => PanelLayoutData<T>) => void;
   index: number;
@@ -115,12 +115,12 @@ function PanelLayoutItem<T>(props: {
           setData={(d) =>
             props.setPanels((panels) =>
               panels.map((p2, j) =>
-                j === i
+                j === i && p2.variant.type === "data"
                   ? {
                       ...p2,
                       variant: {
                         ...p2.variant,
-                        data: d,
+                        data: d(p2.variant.data),
                       },
                     }
                   : p2
@@ -177,8 +177,13 @@ function PanelLayout<T>(props: {
 }) {
   const panelRootRef = useRef<HTMLDivElement>(null);
 
+  const { dragItem } = usePanelDragContext();
+
   return (
     <div
+      style={{
+        userSelect: dragItem === undefined ? undefined : "none",
+      }}
       ref={panelRootRef}
       className={
         "panel-set " +
@@ -216,41 +221,44 @@ function killSinglets<T>(data: PanelLayoutData<T>): PanelLayoutData<T> {
 }
 
 export const PanelDragContext = createContext<{
-  dragItem: PanelLayoutDataItem<any> | undefined;
-  setDragItem: (
-    fn: (
-      p: PanelLayoutDataItem<any> | undefined
-    ) => PanelLayoutDataItem<any> | undefined
-  ) => void;
+  dragItem: any | undefined;
+  setDragItem: (fn: (p: any | undefined) => any | undefined) => void;
+  dragToPanel: (drag: any) => any | undefined;
+  mergePanelWithDrag: (panel: any, drag: any) => any;
+  panelToDrag: (panel: any) => any;
 }>(undefined as any);
 
-export function usePanelDragContext<T>(): [
-  PanelLayoutDataItem<T> | undefined,
-  (
-    fn: (
-      p: PanelLayoutDataItem<T> | undefined
-    ) => PanelLayoutDataItem<T> | undefined
-  ) => void
-] {
-  const { dragItem, setDragItem } = useContext(PanelDragContext);
-  return [dragItem, setDragItem] as const;
+export function usePanelDragContext<T, Drag>(): {
+  dragItem: Drag | undefined;
+  setDragItem: (fn: (p: Drag | undefined) => Drag | undefined) => void;
+  dragToPanel: (drag: Drag) => PanelLayoutDataItem<T> | undefined;
+  mergePanelWithDrag: (
+    panel: PanelLayoutDataItem<T>,
+    drag: Drag
+  ) => PanelLayoutDataItem<T>;
+  panelToDrag: (panel: PanelLayoutDataItem<T>) => Drag;
+} {
+  return useContext(PanelDragContext);
 }
 
-export function RootPanelLayout<T>(props: {
+export function RootPanelLayout<T, Drag>(props: {
   panels: PanelLayoutData<T>;
   setPanels: React.Dispatch<React.SetStateAction<PanelLayoutData<T>>>;
   panelComponent: PanelComponent<T>;
   vertical: boolean;
   defaultEmptyConfiguration: PanelLayoutData<T>;
+  dragToPanel: (drag: Drag) => PanelLayoutDataItem<T> | undefined;
+  mergePanelWithDrag: (
+    panel: PanelLayoutDataItem<T>,
+    drag: Drag
+  ) => PanelLayoutDataItem<T>;
+  panelToDrag: (panel: PanelLayoutDataItem<T>) => Drag;
 }) {
-  const [dragItem, setDragItem] = useState<PanelLayoutDataItem<T> | undefined>(
-    undefined
-  );
+  const [dragItem, setDragItem] = useState<Drag | undefined>(undefined);
 
   const dragGhostRef = createRef<HTMLDivElement>();
 
   useEffect(() => {
-    console.log("got here", dragItem);
     if (dragItem) {
       document.body.style.cursor = "grabbing";
     } else {
@@ -269,14 +277,25 @@ export function RootPanelLayout<T>(props: {
   }, [dragItem]);
 
   return (
-    <PanelDragContext.Provider value={{ dragItem, setDragItem }}>
+    <PanelDragContext.Provider
+      value={{
+        dragItem,
+        setDragItem,
+        dragToPanel: props.dragToPanel,
+        mergePanelWithDrag: props.mergePanelWithDrag,
+        panelToDrag: props.panelToDrag,
+      }}
+    >
       <PanelLayout
         panels={props.panels}
         setPanels={(cb) => {
-          const panels = killSinglets(cb(props.panels));
-          props.setPanels(
-            panels.length === 0 ? props.defaultEmptyConfiguration : panels
-          );
+          // const panels = killSinglets(cb(props.panels));
+          props.setPanels((oldpanels) => {
+            const panels = killSinglets(cb(oldpanels));
+            return panels.length === 0
+              ? props.defaultEmptyConfiguration
+              : panels;
+          });
         }}
         panelComponent={props.panelComponent}
         vertical={props.vertical}
