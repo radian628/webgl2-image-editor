@@ -16,6 +16,7 @@ import { TextEditorPanel } from "./TextEditorPanel";
 import { id, lens } from "../../utils/lens";
 import { v4 } from "uuid";
 import { ImagePreviewPanel } from "./ImagePreviewPanel";
+import { DocumentationPanel } from "./DocumentationPanel";
 
 export const PanelItem = (props: {
   data: PanelContentsItem;
@@ -34,6 +35,8 @@ export const PanelItem = (props: {
         <TextEditorPanel {...props} data={props.data}></TextEditorPanel>
       ) : props.data.type === "image-preview" ? (
         <ImagePreviewPanel {...props} data={props.data}></ImagePreviewPanel>
+      ) : props.data.type === "documentation" ? (
+        <DocumentationPanel {...props} data={props.data}></DocumentationPanel>
       ) : (
         <></>
       )}
@@ -60,13 +63,7 @@ function panelItemToName(item: PanelContentsItem) {
 export const Panel: PanelComponent<PanelContents> = (
   props: PanelComponentProps<PanelContents>
 ) => (
-  <div
-    style={{
-      backgroundImage: `linear-gradient(45deg, #222222, #333333)`,
-      color: "white",
-      height: "100%",
-    }}
-  >
+  <div className="panel-root">
     <PanelMenu
       index={props.index}
       panels={props.panels}

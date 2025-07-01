@@ -1,10 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <script>
       window.addEventListener("message", async function (e) {
         if (!e.data || e.data.type !== "exec") return;
         await import(e.data.src);
+        window.parent.postMessage(
+          {
+            type: "exec-response",
+            id: e.data.id,
+          },
+          "*"
+        );
       });
     </script>
   </head>

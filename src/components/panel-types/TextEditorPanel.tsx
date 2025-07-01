@@ -19,6 +19,8 @@ import ts from "typescript";
 import { basicSetup } from "codemirror";
 import { ImageEditorDragState } from "../ImageEditorPanels";
 import { v4 } from "uuid";
+import "./TextEditorPanel.css";
+import { useDocumentation } from "./DocumentationPanel";
 
 export function TextEditorPanel(props: {
   data: PanelType<"text-editor">;
@@ -33,6 +35,8 @@ export function TextEditorPanel(props: {
 
   const [textLoaded, setTextLoaded] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const [documentation, setDocumentation] = useDocumentation();
 
   async function loadTextFromFile() {
     if (props.data.file) {
@@ -67,10 +71,7 @@ export function TextEditorPanel(props: {
         doc: text,
         extensions: [
           basicSetup,
-          javascript({
-            typescript: true,
-          }),
-          props.data.file
+          props.data.file?.path.endsWith(".ts")
             ? typescriptLanguageService(
                 [props.data.file.path],
                 props.data.file.path,
@@ -82,12 +83,19 @@ export function TextEditorPanel(props: {
                     "es5",
                     "EvalboxDefs",
                     "components/iframe-runtime/EvalboxDefs",
+                    "StaticallyInferredFiles",
                   ],
-                  target: ts.ScriptTarget.ES5,
+                  target: ts.ScriptTarget.ES2024,
+                  strict: true,
+                  module: ts.ModuleKind.ESNext,
+                },
+                (docs) => {
+                  setDocumentation({
+                    component: docs,
+                  });
                 }
               )
             : [],
-          typescriptLanguage,
           EditorView.lineWrapping,
           keymap.of(defaultKeymap),
           keymap.of(searchKeymap),
@@ -141,7 +149,7 @@ export function TextEditorPanel(props: {
   }, []);
 
   return (
-    <div className="glsl-editor-container" ref={editorContainerRef}>
+    <>
       <div
         onMouseDown={(e) => {
           setDragItem(() => ({
@@ -153,9 +161,11 @@ export function TextEditorPanel(props: {
             },
           }));
         }}
+        className="text-editor-get-preview"
       >
         Get Preview
       </div>
-    </div>
+      <div className="glsl-editor-container" ref={editorContainerRef}></div>
+    </>
   );
 }

@@ -10,7 +10,6 @@ const rawQueryParamPlugin = {
   name: "raw",
   setup(build) {
     build.onResolve({ filter: /\?.*raw/ }, (args) => {
-      console.log(path.join(args.resolveDir, args.path));
       return {
         path: path.join(args.resolveDir, args.path),
         namespace: "raw-ns",
@@ -31,7 +30,6 @@ const rawDtsQueryParamPlugin = {
   name: "dtstext",
   setup(build) {
     build.onResolve({ filter: /\?.*dtstext/ }, (args) => {
-      console.log(path.join(args.resolveDir, args.path));
       return {
         path: path.join(args.resolveDir, args.path),
         namespace: "dtstext-ns",
@@ -60,6 +58,52 @@ const rawDtsQueryParamPlugin = {
   },
 };
 
+async function buildVFSTree(link) {
+  console.log(link);
+  const isDir = (await fs.lstat(link)).isDirectory();
+  if (isDir) {
+    const contents = await Promise.all(
+      (await fs.readdir(link)).map(async (l) => ({
+        name: l,
+        tree: await buildVFSTree(`${link}/${l}`),
+      }))
+    );
+    return `{
+  type: "dir",
+  name: ${JSON.stringify(link.split("/").at(-1))},
+  contents: new Map([${contents.map((c) => `[${JSON.stringify(c.name)}, ${c.tree}]`).join(",")}])
+}`;
+  } else {
+    return `{
+  type: "file",
+  name: ${JSON.stringify(link.split("/").at(-1))},
+  contents: new Blob([${JSON.stringify((await fs.readFile(link)).toString())}])   
+}`;
+  }
+}
+
+const vfsBuilderPlugin = {
+  name: "vfs",
+  setup(build) {
+    build.onResolve({ filter: /\?.*vfs/ }, (args) => {
+      return {
+        path: path.join(args.resolveDir, args.path),
+        namespace: "vfs-ns",
+      };
+    });
+    build.onLoad({ filter: /.*/, namespace: "vfs-ns" }, async (args) => {
+      console.log(args);
+      const outstr =
+        `export default ` + (await buildVFSTree(args.path.slice(0, -4)));
+      console.log(outstr);
+      return {
+        contents: outstr,
+        loader: "ts",
+      };
+    });
+  },
+};
+
 const ctx = await esbuild.context({
   entryPoints: [
     "src/index.tsx",
@@ -72,6 +116,7 @@ const ctx = await esbuild.context({
   plugins: [
     rawQueryParamPlugin,
     rawDtsQueryParamPlugin,
+    vfsBuilderPlugin,
     copy({
       resolveFrom: "cwd",
       assets: {

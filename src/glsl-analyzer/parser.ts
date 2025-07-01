@@ -1094,7 +1094,7 @@ declaration.setPattern(
     ),
     commentify(
       seq(
-        apply(type_qualifier, (x) => (console.log("asdasd got here"), x)),
+        apply(type_qualifier, (x) => x),
         with_comment_before(apply(tok(TokenKind.Identifier), (t) => t.text)),
         comment_parser,
         str("{"),

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { JSX, useState } from "react";
 import {
   PanelLayoutData,
   PanelLayoutDataItem,
@@ -8,6 +8,7 @@ import { PanelContents, PanelContentsItem } from "./panel-types/PanelSelector";
 import React from "react";
 import { v4 } from "uuid";
 import { Panel } from "./panel-types/Panel";
+import { DocumentationContext } from "./panel-types/DocumentationPanel";
 
 export type ImageEditorDragState =
   | {
@@ -48,43 +49,56 @@ export function ImageEditorPanels() {
           },
         };
 
+  const [documentation, setDocumentation] = useState<{
+    component: () => JSX.Element;
+  }>({
+    component: () => <></>,
+  });
+
   return (
-    <RootPanelLayout
-      panels={panels}
-      setPanels={setPanels}
-      panelComponent={Panel}
-      vertical={false}
-      defaultEmptyConfiguration={[
-        {
-          proportion: 1,
-          variant: {
-            type: "data",
-            data: { items: [{ type: "none", id: v4() }], openIndex: 0 },
-          },
-          id: v4(),
-        },
-      ]}
-      panelToDrag={(p) => ({ type: "panel", panel: p } as ImageEditorDragState)}
-      dragToPanel={dragToPanel}
-      mergePanelWithDrag={(panel, drag): PanelLayoutDataItem<PanelContents> => {
-        if (drag.type === "panel" || panel.variant.type === "nested") {
-          return dragToPanel(drag);
-        } else {
-          const newItems = [...panel.variant.data.items];
-          newItems.splice(panel.variant.data.openIndex, 0, drag.item);
-          return {
+    <DocumentationContext.Provider value={{ documentation, setDocumentation }}>
+      <RootPanelLayout
+        panels={panels}
+        setPanels={setPanels}
+        panelComponent={Panel}
+        vertical={false}
+        defaultEmptyConfiguration={[
+          {
             proportion: 1,
-            id: v4(),
             variant: {
               type: "data",
-              data: {
-                items: newItems,
-                openIndex: panel.variant.data.openIndex + 1,
-              },
+              data: { items: [{ type: "none", id: v4() }], openIndex: 0 },
             },
-          };
+            id: v4(),
+          },
+        ]}
+        panelToDrag={(p) =>
+          ({ type: "panel", panel: p }) as ImageEditorDragState
         }
-      }}
-    ></RootPanelLayout>
+        dragToPanel={dragToPanel}
+        mergePanelWithDrag={(
+          panel,
+          drag
+        ): PanelLayoutDataItem<PanelContents> => {
+          if (drag.type === "panel" || panel.variant.type === "nested") {
+            return dragToPanel(drag);
+          } else {
+            const newItems = [...panel.variant.data.items];
+            newItems.splice(panel.variant.data.openIndex, 0, drag.item);
+            return {
+              proportion: 1,
+              id: v4(),
+              variant: {
+                type: "data",
+                data: {
+                  items: newItems,
+                  openIndex: panel.variant.data.openIndex,
+                },
+              },
+            };
+          }
+        }}
+      ></RootPanelLayout>
+    </DocumentationContext.Provider>
   );
 }

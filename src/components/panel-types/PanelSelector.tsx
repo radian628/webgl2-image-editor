@@ -7,6 +7,8 @@ import {
 } from "../../filesystem/FilesystemAdaptor";
 import { EditorState } from "@codemirror/state";
 import { v4 } from "uuid";
+import Sample from "../../../sample.ts?raw";
+import VFS from "../../../examples/single-pass?vfs";
 
 type FileReference = {
   path: string;
@@ -44,6 +46,10 @@ export type PanelContentsItem =
       file: FileReference | undefined;
       state?: EditorState;
       id: string;
+    }
+  | {
+      type: "documentation";
+      id: string;
     };
 
 export type PanelType<T extends PanelContentsItem["type"]> =
@@ -70,6 +76,7 @@ export function PanelSelector(props: {
           ["pipeline-editor", "Pipeline Editor"],
           ["image-preview", "Image Preview"],
           ["text-editor", "Text Editor"],
+          ["documentation", "Documentation"],
         ]}
         setValue={(v) => {
           if (v === "none") {
@@ -81,7 +88,7 @@ export function PanelSelector(props: {
             props.setData((data) => ({
               type: "filesystem",
               id: v4(),
-              adaptor: createVirtualFilesystem({
+              adaptor: createVirtualFilesystem(VFS) /* createVirtualFilesystem({
                 type: "dir",
                 name: "root",
                 contents: new Map([
@@ -90,7 +97,7 @@ export function PanelSelector(props: {
                     {
                       type: "file",
                       name: "a.ts",
-                      contents: new Blob(["test text file"]),
+                      contents: new Blob([Sample]),
                     },
                   ],
                   [
@@ -110,9 +117,38 @@ export function PanelSelector(props: {
                       ]),
                     },
                   ],
-                  ["c", { type: "file", name: "c", contents: new Blob([]) }],
+                  [
+                    "test.frag",
+                    {
+                      type: "file",
+                      name: "test.frag",
+                      contents: new Blob([
+                        `#version 300 es
+precision highp float;
+
+in vec2 pos2;
+out vec4 col; 
+
+uniform float blue; 
+uniform sampler2D tex; 
+void main() { 
+  col = vec4(texture(tex, pos2 * 0.5 + 0.5).rg, blue, 1.0); 
+}`,
+                      ]),
+                    },
+                  ],
+                  [
+                    "test.vert",
+                    {
+                      type: "file",
+                      name: "test.vert",
+                      contents: new Blob([
+                        `#version 300 es\nprecision highp float;in vec2 pos;out vec2 pos2; void main() { pos2 = pos; gl_Position = vec4(pos, 0.5, 1.0); }`,
+                      ]),
+                    },
+                  ],
                 ]),
-              }),
+              })*/,
               openDir: "root",
             }));
           } else if (v === "shader-editor") {
@@ -137,6 +173,11 @@ export function PanelSelector(props: {
             props.setData((data) => ({
               type: "text-editor",
               file: undefined,
+              id: v4(),
+            }));
+          } else if (v === "documentation") {
+            props.setData((data) => ({
+              type: "documentation",
               id: v4(),
             }));
           }

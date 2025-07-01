@@ -8,6 +8,7 @@ import {
 } from "../iframe-runtime/GLMessageProtocol";
 import ts from "typescript";
 import * as esbuild from "esbuild-wasm";
+import { v4 } from "uuid";
 
 function jsToDataURI(js: string) {
   return `data:application/javascript;base64,${btoa(js)}`;
@@ -23,6 +24,27 @@ function esbuildPromise() {
     esbuildInitializing = true;
   }
   return esbuildReadyPromise;
+}
+
+export function execEvalbox(evalbox: HTMLIFrameElement, code: string) {
+  return new Promise<void>((resolve, reject) => {
+    const evalId = v4();
+    const listener = (e: MessageEvent) => {
+      if (e.data.type === "exec-response" && e.data.id === evalId) {
+        window.removeEventListener("message", listener);
+        resolve();
+      }
+    };
+    window.addEventListener("message", listener);
+    evalbox.contentWindow!.postMessage(
+      {
+        type: "exec",
+        src: jsToDataURI(code),
+        id: evalId,
+      },
+      "*"
+    );
+  });
 }
 
 export function ImagePreviewPanel(props: {
@@ -103,26 +125,15 @@ export function ImagePreviewPanel(props: {
 
       evalbox.addEventListener("load", () => {
         (async () => {
-          evalbox.contentWindow!.postMessage(
-            {
-              type: "exec",
-              src: jsToDataURI(evalboxGLWrapper),
-            },
-            "*"
-          );
-          evalbox.contentWindow!.postMessage(
-            {
-              type: "exec",
-              src: jsToDataURI(await esbuildResult),
-            },
-            "*"
-          );
+          await execEvalbox(evalbox, evalboxGLWrapper);
+          await execEvalbox(evalbox, await esbuildResult);
         })();
       });
 
       const buffers = new Map<string, WebGLBuffer>();
       const shaders = new Map<string, WebGLShader>();
       const programs = new Map<string, WebGLProgram>();
+      const textures = new Map<string, WebGLTexture>();
 
       evalbox.setAttribute("sandbox", "allow-scripts");
       evalbox.setAttribute("origin", window.location.origin);
@@ -142,6 +153,9 @@ export function ImagePreviewPanel(props: {
           buffers,
           shaders,
           programs,
+          textures,
+          fs: props.data.file!.fs,
+          canvas,
         };
 
         (async () => {

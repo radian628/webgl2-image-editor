@@ -5,6 +5,11 @@ export type FilesystemAdaptor = {
   writeFile: (path: string, contents: Blob) => Promise<Blob | undefined>;
   getDefaultPath: () => Promise<string>;
   watchFile: (path: string, callback: () => void) => () => void;
+  watchPattern: (
+    root: string,
+    match: (path: string) => boolean,
+    callback: (path: string) => void
+  ) => () => void;
 };
 
 export type VirtualFilesystemTree =
@@ -39,6 +44,11 @@ export function createVirtualFilesystem(
   tree: VirtualFilesystemTree
 ): FilesystemAdaptor {
   const watchers = new Map<string, Set<() => void>>();
+  const watchPatterns: Set<{
+    root: string[];
+    match: (path: string) => boolean;
+    callback: (path: string) => void;
+  }> = new Set();
   return {
     watchFile(path: string, callback: () => void) {
       let callbacks = watchers.get(path);
@@ -48,6 +58,13 @@ export function createVirtualFilesystem(
       }
       callbacks.add(callback);
       return () => callbacks.delete(callback);
+    },
+    watchPattern(root, match, callback) {
+      const pat = { root: root.split("/").slice(1), match, callback };
+      watchPatterns.add(pat);
+      return () => {
+        watchPatterns.delete(pat);
+      };
     },
     readDir(path: string) {
       const dir = traverse(tree, path);
@@ -92,6 +109,17 @@ export function createVirtualFilesystem(
         item.contents = contents;
         for (const w of watchers.get(path) ?? []) {
           w();
+        }
+        for (const w of watchPatterns) {
+          let matches = true;
+          for (let i = 0; i < w.root.length; i++) {
+            if (w.root[i] !== splitPath.at(i)) {
+              matches = false;
+            }
+          }
+          if (!matches) continue;
+          if (!w.match(path)) continue;
+          w.callback(path);
         }
         return Promise.resolve(contents);
       }
