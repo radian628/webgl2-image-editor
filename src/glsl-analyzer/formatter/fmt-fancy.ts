@@ -414,6 +414,8 @@ export const makeFancyFormatter = (
           return `for(${this.statement(s.data.init)}${this.forRestStatement(
             s.data.rest
           )})${this.statement(s.data.body)}`;
+        case "error":
+          return `###ERROR###`;
       }
     },
 

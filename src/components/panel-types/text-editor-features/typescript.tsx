@@ -61,7 +61,6 @@ export function typescriptLanguageService(
 
   watchForStaticallyInferredShaders(fs, (shaders) => {
     staticallyInferredFilesSource = shaders;
-    console.log("statically inferred", staticallyInferredFilesSource);
     if (!files["@internal/StaticallyInferredFiles.d.ts"])
       files["@internal/StaticallyInferredFiles.d.ts"] = { version: 0 };
     files["@internal/StaticallyInferredFiles.d.ts"].version++;

@@ -21,6 +21,7 @@ import { ImageEditorDragState } from "../ImageEditorPanels";
 import { v4 } from "uuid";
 import "./TextEditorPanel.css";
 import { useDocumentation } from "./DocumentationPanel";
+import { glslLanguageService } from "./text-editor-features/glsl";
 
 export function TextEditorPanel(props: {
   data: PanelType<"text-editor">;
@@ -95,7 +96,14 @@ export function TextEditorPanel(props: {
                   });
                 }
               )
-            : [],
+            : props.data.file?.path.endsWith(".vert") ||
+                props.data.file?.path.endsWith(".frag") ||
+                props.data.file?.path.endsWith(".glsl")
+              ? glslLanguageService({
+                  fs: props.data.file.fs,
+                  entryPoint: props.data.file.path,
+                })
+              : [],
           EditorView.lineWrapping,
           keymap.of(defaultKeymap),
           keymap.of(searchKeymap),

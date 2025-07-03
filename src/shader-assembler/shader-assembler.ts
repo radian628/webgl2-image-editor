@@ -302,10 +302,7 @@ export function assembleComposition(params: {
 
   const globalSymbolRemappings = new Map<string, string>();
 
-  let outprog: TranslationUnit = {
-    data: [],
-    comments: [],
-  };
+  let outprog: TranslationUnit = dummyNode([]);
 
   const extantCompositions =
     params.extantCompositions ?? new Map<string, TranslationUnit>();

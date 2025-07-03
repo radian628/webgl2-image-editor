@@ -3,8 +3,8 @@ type NestedKeyOf<T, K> = K extends [infer K1, ...infer Kr]
     ? NestedKeyOf<T[K1], Kr>
     : never
   : K extends []
-  ? T
-  : never;
+    ? T
+    : never;
 
 export function setDeep<T, K extends [...string[]]>(
   t: T,
@@ -65,20 +65,20 @@ type LensObject<T, Root = T> = {
   [K in keyof WithLensMethods<T, Root>]-?: K extends "$"
     ? LensValue<T, Root>
     : K extends "$p"
-    ? LensPartial<T, Root>
-    : K extends "$f"
-    ? LensObject<T, T>
-    : K extends "$e"
-    ? T extends (infer I)[]
-      ? LensEach<T, Root, I>
-      : never
-    : K extends "$m"
-    ? LensMatch<T, Root>
-    : K extends "$g"
-    ? LensGet<T, Root>
-    : undefined extends WithLensMethods<T, Root>[K]
-    ? LensObject<WithLensMethods<T, Root>[K], Root>
-    : LensObject<WithLensMethods<T, Root>[K], Root>;
+      ? LensPartial<T, Root>
+      : K extends "$f"
+        ? LensObject<T, T>
+        : K extends "$e"
+          ? T extends (infer I)[]
+            ? LensEach<T, Root, I>
+            : never
+          : K extends "$m"
+            ? LensMatch<T, Root>
+            : K extends "$g"
+              ? LensGet<T, Root>
+              : undefined extends WithLensMethods<T, Root>[K]
+                ? LensObject<WithLensMethods<T, Root>[K], Root>
+                : LensObject<WithLensMethods<T, Root>[K], Root>;
 };
 
 export function lens<T, R = T>(

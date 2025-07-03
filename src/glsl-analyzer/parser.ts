@@ -1,6 +1,7 @@
 import {
   alt_sc,
   apply,
+  fail,
   kleft,
   kmid,
   kright,
@@ -30,15 +31,24 @@ import {
   stretch_node,
   with_comment_before,
 } from "./interleave-comments";
-import { lstr } from "./useful-combinators";
+import {
+  consumeUntil,
+  errExprFallback,
+  errStmtFallback,
+  fail_if,
+  failOnErrExpr,
+  lstr,
+} from "./useful-combinators";
 
 // check the grammar in the GL ES specification
 // https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf
 
 type ErrorExpr = {
   type: "error";
-  why: string;
+  errorType: "expr";
   _isExpr: true;
+  _isError: true;
+  why: string;
 };
 
 type IntExpr = {
@@ -113,7 +123,7 @@ export type BinaryOpExpr = {
   _isExpr: true;
 };
 
-type AssignmentExpr = {
+export type AssignmentExpr = {
   type: "assignment";
   left: ASTNode<Expr>;
   right: ASTNode<Expr>;
@@ -136,7 +146,7 @@ type FieldAccessExpr = {
   _isExpr: true;
 };
 
-type FunctionCallExpr = {
+export type FunctionCallExpr = {
   type: "function-call";
   identifier: FunctionIdentifier;
   args: ASTNode<Expr>[];
@@ -164,6 +174,14 @@ export type Expr =
   | FunctionCallFieldAccessExpr
   | ConditionalExpr
   | AssignmentExpr;
+
+export type ErrorStmt = {
+  type: "error";
+  errorType: "stmt";
+  why: string;
+  _isStmt: true;
+  _isError: true;
+};
 
 export type ExprStmt = {
   type: "expr";
@@ -256,7 +274,8 @@ export type Stmt =
   | DeclarationStmt
   | CompoundStmt
   | SelectionStmt
-  | IterationStmt;
+  | IterationStmt
+  | ErrorStmt;
 
 export type ExternalDeclarationFunction = {
   type: "function";
@@ -564,7 +583,7 @@ function glslParseInt(str: string): number {
   throw new Error("TODO");
 }
 
-export type TranslationUnit = Commented<ASTNode<ExternalDeclaration>[]>;
+export type TranslationUnit = ASTNode<ASTNode<ExternalDeclaration>[]>;
 
 const variable_identifier = rule<TokenKind, ASTNode<Expr>>();
 export const primary_expression = rule<TokenKind, ASTNode<Expr>>();
@@ -763,10 +782,14 @@ primary_expression.setPattern(
       )
     ),
     // parenthesized expression
-    add_comments(
-      seq(comment_parser, str("("), expression, comment_parser, str(")")),
-      (t) => t[2],
-      (c, oc) => [c[0], ...oc, c[3]]
+    errExprFallback(
+      add_comments(
+        seq(comment_parser, str("("), expression, comment_parser, str(")")),
+        (t) => t[2],
+        (c, oc) => [c[0], ...oc, c[3]]
+      ),
+      "Syntax error.",
+      consumeUntil(str(")"))
     )
   )
 );
@@ -774,7 +797,8 @@ primary_expression.setPattern(
 const field_access: Parser<TokenKind, ASTNode<Expr>> =
   // a.b
   binop_generic(
-    alt_sc(function_call_generic, primary_expression),
+    alt_sc(function_call_generic, failOnErrExpr(primary_expression)),
+    // failOnErrExpr(primary_expression),
     seq(comment_parser, str("."), comment_parser, postfix_expression),
     (left: ASTNode<Expr>, right) => [
       {
@@ -791,7 +815,7 @@ postfix_expression.setPattern(
   alt_sc(
     // a[b]
     binop_generic(
-      primary_expression,
+      failOnErrExpr(primary_expression),
       seq(
         comment_parser,
         str("["),
@@ -812,7 +836,7 @@ postfix_expression.setPattern(
     ),
     // a++, a--
     binop_generic(
-      primary_expression,
+      failOnErrExpr(primary_expression),
       seq(comment_parser, alt_sc(str("++"), str("--"))),
       (left, right) => [
         {
@@ -827,7 +851,7 @@ postfix_expression.setPattern(
     ),
     field_access,
     function_call_generic,
-    primary_expression
+    failOnErrExpr(primary_expression)
   )
 );
 
@@ -1028,7 +1052,7 @@ conditional_expression.setPattern(
             condition: l[0],
             ifTrue: l[3],
             ifFalse: l[6],
-          } as ConditionalExpr),
+          }) as ConditionalExpr,
         (l) => [l[1], l[4]]
       )
     ),
@@ -1089,7 +1113,7 @@ declaration.setPattern(
           type: "declarator-list",
           declaratorList: s[0],
           _isDecl: true,
-        } satisfies Declaration),
+        }) satisfies Declaration,
       (s) => [s[1]]
     ),
     commentify(
@@ -1129,7 +1153,7 @@ declaration.setPattern(
           declarationList: s[4],
           constantExpr: s[7]?.[1]?.[2],
           _isDecl: true,
-        } satisfies Declaration),
+        }) satisfies Declaration,
       (s) => [s[2], s[5], ...(s[7]?.[1] ? [s[7][1][0], s[7][1][3]] : []), s[8]]
     ),
     commentify(
@@ -1151,7 +1175,7 @@ declaration.setPattern(
           precision: s[1],
           specifier: s[2],
           _isDecl: true,
-        } satisfies Declaration),
+        }) satisfies Declaration,
       (s) => [s[3]]
     ),
     commentify(
@@ -1214,7 +1238,7 @@ function_header.setPattern(
       ({
         fullySpecifiedType: s[0],
         name: s[1],
-      } as FunctionHeader),
+      }) as FunctionHeader,
     (s) => [s[2]]
   )
 );
@@ -1257,7 +1281,7 @@ parameter_declaration.setPattern(
           parameterTypeQualifier: ptq,
           parameterQualifier: pq,
           declaratorOrSpecifier: dos,
-        } as ParameterDeclaration)
+        }) as ParameterDeclaration
     )
   )
 );
@@ -1282,7 +1306,7 @@ const identifier_declaration: Parser<
           ({
             type: "sized-array",
             size: s[1],
-          } satisfies SingleDeclarationVariant),
+          }) satisfies SingleDeclarationVariant,
         (s) => [s[2]]
       ),
       commentify(
@@ -1300,7 +1324,7 @@ const identifier_declaration: Parser<
             type: "initialized-array",
             size: s[1],
             initializer: s[6],
-          } satisfies SingleDeclarationVariant),
+          }) satisfies SingleDeclarationVariant,
         (s) => [s[2], s[4]]
       ),
       commentify(
@@ -1309,7 +1333,7 @@ const identifier_declaration: Parser<
           ({
             type: "initialized",
             initializer: s[2],
-          } satisfies SingleDeclarationVariant),
+          }) satisfies SingleDeclarationVariant,
         (s) => [s[0]]
       ),
       nil()
@@ -1334,13 +1358,13 @@ init_declarator_list.setPattern(
                 ({
                   type: "type",
                   declType: s,
-                } satisfies SingleDeclarationStart)
+                }) satisfies SingleDeclarationStart
             )
           ),
           with_comment_before(
             apply(
               str("invariant"),
-              (s) => ({ type: "invariant" } satisfies SingleDeclarationStart)
+              (s) => ({ type: "invariant" }) satisfies SingleDeclarationStart
             )
           )
         ),
@@ -1513,7 +1537,7 @@ type_specifier.setPattern(
         type: "type-specifier",
         specifier,
         precision,
-      } as TypeSpecifier),
+      }) as TypeSpecifier,
     (s) => []
   )
 );
@@ -1537,7 +1561,7 @@ type_specifier_no_prec.setPattern(
             ? { type: "static", size: s[1][1][1] }
             : { type: "dynamic" }
           : { type: "none" },
-      } as TypeNoPrec),
+      }) as TypeNoPrec,
     (s) => (s[1] ? [s[1][0], s[1][1][2]] : [])
   )
 );
@@ -1612,7 +1636,7 @@ type_specifier_nonarray.setPattern(
           ({
             type: "custom",
             name: s,
-          } satisfies TypeSpecifierNonarray)
+          }) satisfies TypeSpecifierNonarray
       )
     )
   )
@@ -1699,7 +1723,7 @@ struct_declarator.setPattern(
               expr: s[1]?.[2],
             }
           : undefined,
-      } as StructDeclarator),
+      }) as StructDeclarator,
     (s) => (s[1] ? [s[1][0], s[1][3]] : [])
   )
 );
@@ -1715,7 +1739,7 @@ declaration_statement.setPattern(
           type: "declaration",
           decl,
           _isStmt: true,
-        } satisfies Stmt)
+        }) satisfies Stmt
     )
   )
 );
@@ -1754,8 +1778,27 @@ compound_statement_no_new_scope.setPattern(
   )
 );
 
+const errorable_statement = fail_if(
+  errStmtFallback(
+    statement,
+    "Expected a statement.",
+    // if we can't find a statement...
+    consumeUntil(
+      // keep consuming until semicolon
+      str(";"),
+      // alternatively, keep consuming, but then STOP right before the "}"
+      str("}")
+    )
+  ),
+  // error state or not, we KNOW a statement REALLY doesn't exist if it's just whitespace/comments
+  rep_sc(alt_sc(tok(TokenKind.Whitespace), tok(TokenKind.Comment)))
+);
+
 statement_list.setPattern(
-  apply(seq(statement, rep_sc(statement)), ([stmt1, rest]) => [stmt1, ...rest])
+  apply(
+    seq(errorable_statement, rep_sc(errorable_statement)),
+    ([stmt1, rest]) => [stmt1, ...rest]
+  )
 );
 
 expression_statement.setPattern(
@@ -1827,7 +1870,7 @@ condition.setPattern(
           fullySpecifiedType: s[0],
           name: s[1],
           initializer: s[4],
-        } as Condition),
+        }) as Condition,
       (s) => [s[2]]
     )
   )
@@ -1855,7 +1898,7 @@ switch_statement.setPattern(
           expr: s[3],
           stmts: s[8] ?? [],
           _isStmt: true,
-        } satisfies SwitchStmt),
+        }) satisfies SwitchStmt,
       (s) => [s[1], s[4], s[6], s[9]]
     )
   )
@@ -1868,7 +1911,7 @@ case_label.setPattern(
     alt_sc(
       commentify(
         seq(str("case"), expression, comment_parser, str(":")),
-        (s) => ({ type: "case", expr: s[1], _isStmt: true } as Stmt),
+        (s) => ({ type: "case", expr: s[1], _isStmt: true }) as Stmt,
         (s) => [s[2]]
       ),
       commentify(
@@ -1899,7 +1942,7 @@ iteration_statement.setPattern(
             cond: s[3],
             body: s[6],
             _isStmt: true,
-          } as IterationStmt),
+          }) as IterationStmt,
         (s) => [s[1], s[4]]
       ),
       commentify(
@@ -1922,7 +1965,7 @@ iteration_statement.setPattern(
             cond: s[6],
             body: s[1],
             _isStmt: true,
-          } as IterationStmt),
+          }) as IterationStmt,
         (s) => [s[2], s[4], s[7], s[9]]
       ),
       commentify(
@@ -1975,12 +2018,12 @@ jump_statement.setPattern(
           comment_parser,
           str(";")
         ),
-        (s) => ({ type: s[0], _isStmt: true } as Stmt),
+        (s) => ({ type: s[0], _isStmt: true }) as Stmt,
         (s) => [s[1]]
       ),
       commentify(
         seq(str("return"), opt_sc(expression), comment_parser, str(";")),
-        (s) => ({ type: "return", expr: s[1], _isStmt: true } satisfies Stmt),
+        (s) => ({ type: "return", expr: s[1], _isStmt: true }) satisfies Stmt,
         (s) => [s[2]]
       )
     )
@@ -1988,10 +2031,12 @@ jump_statement.setPattern(
 );
 
 translation_unit.setPattern(
-  commentify_no_comments_before(
-    seq(rep_sc(external_declaration), comment_parser),
-    (s) => s[0],
-    (s) => [s[1]]
+  nodeify_commented(
+    commentify_no_comments_before(
+      seq(rep_sc(external_declaration), comment_parser),
+      (s) => s[0],
+      (s) => [s[1]]
+    )
   )
 );
 
@@ -2012,7 +2057,7 @@ const import_option: Parser<
       )
     ),
     (s) =>
-      ({ name: s[0].text, alias: s[1]?.[3].text } satisfies SingleItemImport),
+      ({ name: s[0].text, alias: s[1]?.[3].text }) satisfies SingleItemImport,
     (s) => (s[1] ? [s[1][0], s[1][2]] : [])
   )
 );
@@ -2039,7 +2084,7 @@ const import_decl: Parser<
             )
           ),
           (s) =>
-            ({ type: "all", prefix: s[1]?.[3]?.text ?? "" } satisfies Imports),
+            ({ type: "all", prefix: s[1]?.[3]?.text ?? "" }) satisfies Imports,
           (s) => (s[1] ? [s[1][0], s[1][2]] : [])
         ),
         commentify(
@@ -2060,7 +2105,7 @@ const import_decl: Parser<
               imports: s[1]
                 ? [s[1][0], ...(s[1][1].map((e) => e[2]) ?? [])]
                 : [],
-            } satisfies Imports),
+            }) satisfies Imports,
           (s) => [...(s[1]?.[1].map((s) => s[0]) ?? []), s[2]]
         )
       ),
@@ -2076,7 +2121,7 @@ const import_decl: Parser<
         type: "import",
         imports: s[2],
         from: s[6].text.slice(1, -1),
-      } satisfies ExternalDeclarationImport),
+      }) satisfies ExternalDeclarationImport,
     (s) => [s[1], s[5], s[7]]
   )
 );

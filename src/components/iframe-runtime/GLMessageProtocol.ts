@@ -428,7 +428,6 @@ export async function executeGLMessage<Msg extends GLMessage>(
       Object.entries(msg.program.outputs).length > 1 ||
       msg.outputs[Object.keys(msg.program.outputs)?.[0]!]
     ) {
-      console.log("USING FRAMEBUFFER", msg);
       const fbo = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
 
@@ -482,8 +481,6 @@ export async function executeGLMessage<Msg extends GLMessage>(
       let uniformData = msg.uniforms[name];
       if (!Array.isArray(uniformData)) uniformData = [uniformData as number];
       const loc = gl.getUniformLocation(program, name);
-
-      console.log(name, type, uniformData);
 
       let uniformFunc: keyof typeof gl = (
         {

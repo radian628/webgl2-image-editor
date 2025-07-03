@@ -57,7 +57,7 @@ export function seq_interleave(
 export const rep_interleave_sc = lrec_sc;
 
 export const comment_parser = apply(rep_sc(tok(TokenKind.Comment)), (c) =>
-  c.map((c) => ({ comment: c.text } as Comment))
+  c.map((c) => ({ comment: c.text }) as Comment)
 );
 
 export function comment_before<T1>(p: Parser<TokenKind, T1>) {
@@ -200,13 +200,8 @@ export function add_comments<T, U>(
 export function binop_generic<T, U>(
   left: Parser<TokenKind, ASTNode<T>>,
   right: Parser<TokenKind, U>,
-  combine: (
-    l: ASTNode<T>,
-    r: U,
-    start: number,
-    end: number
-  ) => [T, Comment[][]],
-  no_sc?: boolean
+  combine: (l: ASTNode<T>, r: U, start: number, end: number) => [T, Comment[][]]
+  // no_sc?: boolean
 ): Parser<TokenKind, ASTNode<T>> {
   const combine_and_nodeify = (
     l: ASTNode<T>,
@@ -225,7 +220,7 @@ export function binop_generic<T, U>(
 
   return (
     // combined lrec case
-    (no_sc ? lrec : lrec_sc)(
+    lrec_sc(
       apply(seq(left, right), ([l, r], [s, e]) =>
         combine_and_nodeify(l, r, s?.pos.index!, e?.pos.index!)
       ),

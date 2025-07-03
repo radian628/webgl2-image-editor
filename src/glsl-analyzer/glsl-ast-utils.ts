@@ -88,32 +88,52 @@ export function mapOverJson(json: any, map: (json: any) => any) {
 
 export function mapAST<T>(
   t: T,
-  maps: {
-    expr(
+  map: {
+    expr?(
       expr: ASTNode<Expr>,
       mapInner: (expr: ASTNode<Expr>) => ASTNode<Expr>
     ): ASTNode<Expr>;
-    stmt(
+    stmt?(
       stmt: ASTNode<Stmt>,
       mapInner: (stmt: ASTNode<Stmt>) => ASTNode<Stmt>
     ): ASTNode<Stmt>;
-    decl(
+    decl?(
       decl: Commented<Declaration>,
       mapInner: (decl: Commented<Declaration>) => Commented<Declaration>
     ): Commented<Declaration>;
-    extDecl(
+    extDecl?(
       extDecl: ASTNode<ExternalDeclaration>,
       mapInner: (
         extDecl: ASTNode<ExternalDeclaration>
       ) => ASTNode<ExternalDeclaration>
     ): ASTNode<ExternalDeclaration>;
-    struct(
+    struct?(
       struct: StructSpecifier,
       mapInner: (struct: StructSpecifier) => StructSpecifier
     ): StructSpecifier;
+    error?(
+      err: ASTNode<{ _isError: true; why: string }>,
+      mapInner: (
+        err: ASTNode<{ _isError: true; why: string }>
+      ) => ASTNode<{ _isError: true; why: string }>
+    ): ASTNode<{ _isError: true; why: string }>;
   }
 ) {
+  const maps: Required<typeof map> = {
+    expr: (s, i) => i(s),
+    stmt: (s, i) => i(s),
+    decl: (s, i) => i(s),
+    extDecl: (s, i) => i(s),
+    struct: (s, i) => i(s),
+    error: (s, i) => i(s),
+    ...map,
+  };
+
   const mapper = (child: any): any => {
+    if (child?.data?._isError) {
+      child = maps.error(child, (x) => mapOverJson(x, mapper));
+    }
+
     if (child?.data?._isExpr) {
       return maps.expr(child, (x) => mapOverJson(x, mapper));
     } else if (child?.data?._isStmt) {
@@ -135,7 +155,7 @@ export function renameSymbols<T>(t: T, rename: (s: string) => string) {
   function expr(
     e: ASTNode<Expr>,
     mapInner: (expr: ASTNode<Expr>) => ASTNode<Expr>
-  ) {
+  ): ASTNode<Expr> {
     if (e.data.type === "field-access") {
       return {
         ...e,
@@ -324,6 +344,8 @@ export function getAllStatementsInsideStmt(s: ASTNode<Stmt>): ASTNode<Stmt>[] {
       return s.data.stmts;
     case "while":
       return [s.data.body];
+    case "error":
+      return [];
   }
 }
 
