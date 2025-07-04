@@ -98,8 +98,8 @@ export function mapAST<T>(
       mapInner: (stmt: ASTNode<Stmt>) => ASTNode<Stmt>
     ): ASTNode<Stmt>;
     decl?(
-      decl: Commented<Declaration>,
-      mapInner: (decl: Commented<Declaration>) => Commented<Declaration>
+      decl: ASTNode<Declaration>,
+      mapInner: (decl: ASTNode<Declaration>) => ASTNode<Declaration>
     ): Commented<Declaration>;
     extDecl?(
       extDecl: ASTNode<ExternalDeclaration>,
@@ -191,9 +191,9 @@ export function renameSymbols<T>(t: T, rename: (s: string) => string) {
   }
 
   function decl(
-    d: Commented<Declaration>,
-    mapInner: (decl: Commented<Declaration>) => Commented<Declaration>
-  ): Commented<Declaration> {
+    d: ASTNode<Declaration>,
+    mapInner: (decl: ASTNode<Declaration>) => ASTNode<Declaration>
+  ): ASTNode<Declaration> {
     return mapInner(
       lens(d).data.$m("type", {
         struct: (d) => ({

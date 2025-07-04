@@ -104,7 +104,7 @@ export const makeFancyFormatter = (
         case "field-access":
           return `${this.expr(e.data.left, {
             precedence: minPrecedence,
-          })}.${this.expr(e.data.right, c)}`;
+          })}.${e.data.right}`;
         case "unary-op": {
           const prec = c.precedence;
           const c2 = {

@@ -256,6 +256,17 @@ roundtripStmt(
 );
 roundtripStmt("switch (1) { }", "switch(1){}");
 roundtripStmt("switch (1) {1;}", "switch(1){1;}");
+roundtripStmt("float x[1] = float[1](1.0);", "float x[1]=float[1](1.0);");
+roundtripStmt("float x[1] = float[](1.0);", "float x[1]=float[](1.0);");
+roundtripStmt(
+  "float x[2] = float[2](1.0, 1.0);",
+  "float x[2]=float[2](1.0,1.0);"
+);
+roundtripStmt(
+  "float x[2] = float[](1.0, 2.0);",
+  "float x[2]=float[](1.0,2.0);"
+);
+roundtripStmt("float x[1];", "float x[1];");
 
 roundtripExtDecl("float x = 1.0;", "float x=1.0;");
 roundtripExtDecl("void main(){}", "void main(){}");

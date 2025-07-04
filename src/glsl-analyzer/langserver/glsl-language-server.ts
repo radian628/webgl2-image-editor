@@ -7,6 +7,8 @@ import {
   ASTNode,
   Commented,
   Declaration,
+  Expr,
+  ExternalDeclarationFunction,
   FullySpecifiedType,
   FunctionCallExpr,
   FunctionHeader,
@@ -20,7 +22,19 @@ import {
   renameSymbols,
 } from "../glsl-ast-utils";
 import { id, lens } from "../../utils/lens";
-import { getExprType } from "./typecheck";
+import {
+  getExprType,
+  getFunctionParamType,
+  getFunctionParamTypeNode,
+  isIntOrIntVector,
+  isSameType,
+  isScalar,
+  stringifyType,
+  TypeResult,
+} from "./typecheck";
+import { glslBuiltinScope } from "./builtins";
+import { Result } from "../../utils/result";
+import { evaluateTranslationUnit, StackFrame } from "./evaluator";
 
 export type GLSLAutocompleteOption = {
   str: string;
@@ -35,12 +49,21 @@ export type ScopeItem =
     }
   | {
       type: "function";
-      signature: Commented<FunctionHeader>;
+      signatures:
+        | Commented<ExternalDeclarationFunction>[]
+        | ((
+            fncall: ASTNode<FunctionCallExpr>,
+            params: {
+              expr: ASTNode<Expr>;
+              type: FullySpecifiedType | undefined;
+            }[]
+          ) => TypeResult);
     };
 
 export type Scope = {
   items: Map<string, ScopeItem>;
   innerScopes: Scope[];
+  innerScopeMap: Map<any, Scope>;
   start: number;
   end: number;
 };
@@ -64,8 +87,20 @@ export function scopeFind(
   return lastScope.items.get(name) ?? scopeFind(scopes.slice(0, -1), name);
 }
 
+export function getScopeOf(
+  scopes: Scope[],
+  name: string
+): { scope: Scope; item: ScopeItem } | undefined {
+  const lastScope = scopes.at(-1);
+  if (!lastScope) return undefined;
+  const item = lastScope.items.get(name);
+  return item
+    ? { item, scope: lastScope }
+    : getScopeOf(scopes.slice(0, -1), name);
+}
+
 function getEnclosingScopes(scope: Scope, pos: number): Scope[] {
-  const res = [scope];
+  const res = [glslBuiltinScope(0, scope.end), scope];
   for (const innerScope of scope.innerScopes) {
     if (pos >= innerScope.start && pos < innerScope.end) {
       return res.concat(getEnclosingScopes(innerScope, pos));
@@ -124,32 +159,61 @@ async function addStatementScopeItems(
   }
 }
 
+function emptyScope(stmt: ASTNode<any>): Scope {
+  return {
+    items: new Map(),
+    innerScopes: [],
+    innerScopeMap: new Map(),
+    start: stmt.range.start,
+    end: stmt.range.end,
+  };
+}
+
+// TODO: fix loops (body of loops is same scope as definition, see page 79)
 function generateLocalScope(stmt: ASTNode<Stmt>, filecontents: string): Scope {
   const items = new Map<string, ScopeItem>();
   const innerScopes: Scope[] = [];
+  const innerScopeMap = new Map<any, Scope>();
   if (stmt.data.type === "compound") {
     for (const s of stmt.data.statements) {
       addStatementScopeItems(s, items);
+      const innerScope = generateLocalScope(s, filecontents);
+      innerScopes.push(innerScope);
+      innerScopeMap.set(s, innerScope);
     }
   } else if (stmt.data.type === "do-while" || stmt.data.type === "while") {
-    innerScopes.push(generateLocalScope(stmt.data.body, filecontents));
+    const whileScope = generateLocalScope(stmt.data.body, filecontents);
+    innerScopes.push(whileScope);
+    innerScopeMap.set(stmt, whileScope);
   } else if (stmt.data.type === "for") {
     addStatementScopeItems(stmt.data.body, items);
-    innerScopes.push(generateLocalScope(stmt.data.body, filecontents));
+    const forScope = generateLocalScope(stmt.data.body, filecontents);
+    innerScopes.push(forScope);
+    innerScopeMap.set(stmt, forScope);
   } else if (stmt.data.type === "selection") {
-    innerScopes.push(generateLocalScope(stmt.data.rest.data.if, filecontents));
-    if (stmt.data.rest.data.else)
-      innerScopes.push(
-        generateLocalScope(stmt.data.rest.data.else, filecontents)
+    const ifScope = generateLocalScope(stmt.data.rest.data.if, filecontents);
+    innerScopes.push(ifScope);
+    innerScopeMap.set(stmt, ifScope);
+    if (stmt.data.rest.data.else) {
+      const elseScope = generateLocalScope(
+        stmt.data.rest.data.else,
+        filecontents
       );
+      innerScopes.push(elseScope);
+      innerScopeMap.set(stmt.data.rest.data.else, elseScope);
+    }
   } else if (stmt.data.type === "switch") {
     for (const s of stmt.data.stmts) {
       addStatementScopeItems(s, items);
+      const innerScope = generateLocalScope(s, filecontents);
+      innerScopes.push(innerScope);
+      innerScopeMap.set(s, innerScope);
     }
   }
   return {
     items,
     innerScopes,
+    innerScopeMap,
     start: stmt.range.start,
     end: stmt.range.end ?? filecontents.length,
   };
@@ -163,13 +227,19 @@ async function generateGlobalScope(
 ): Promise<Scope> {
   const items = new Map<string, ScopeItem>();
   const innerScopes: Scope[] = [];
+  const innerScopeMap = new Map<any, Scope>();
   for (const ed of ast.data) {
     // function definitions
     if (ed.data.type === "function") {
-      items.set(ed.data.prototype.data.name.data, {
-        type: "function",
-        signature: ed.data.prototype,
-      });
+      const fn = items.get(ed.data.prototype.data.name.data);
+      if (fn && fn.type === "function" && Array.isArray(fn.signatures)) {
+        fn.signatures.push(ed as ASTNode<ExternalDeclarationFunction>);
+      } else {
+        items.set(ed.data.prototype.data.name.data, {
+          type: "function",
+          signatures: [ed as ASTNode<ExternalDeclarationFunction>],
+        });
+      }
 
       // variables and struct definitions and function prototypes
     } else if (ed.data.type === "declaration") {
@@ -200,12 +270,28 @@ async function generateGlobalScope(
 
     // local scopes
     if (ed.data.type === "function") {
-      innerScopes.push(await generateLocalScope(ed.data.body, filecontents));
+      const fnscope = await generateLocalScope(ed.data.body, filecontents);
+      innerScopes.push(fnscope);
+      innerScopeMap.set(ed.data.body, fnscope);
+      for (const param of ed.data.prototype.data.parameters?.data ?? []) {
+        const paramName =
+          param.data.declaratorOrSpecifier.type === "declarator"
+            ? param.data.declaratorOrSpecifier.declarator.data.identifier
+            : undefined;
+        const type = getFunctionParamTypeNode(param);
+        if (!paramName) continue;
+        items.set(paramName.data, {
+          type: "variable",
+          name: paramName,
+          dataType: type,
+        });
+      }
     }
   }
   return {
     items,
     innerScopes,
+    innerScopeMap,
     start: ast.range.start,
     end: ast.range.end ?? filecontents.length,
   };
@@ -330,6 +416,30 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
   >();
 
   return {
+    async evaluate(
+      file: string,
+      functionName: string
+    ): Promise<StackFrame | undefined> {
+      const sem = await semanticallyAnalyzeGLSL(file, {
+        fileVersions,
+        semanticAnalysisInfo,
+        fs,
+      });
+
+      if (!sem) return;
+
+      return evaluateTranslationUnit(
+        sem.translationUnit,
+        [
+          glslBuiltinScope(
+            sem.translationUnit.range.start,
+            sem.translationUnit.range.end
+          ),
+          sem.globalScope,
+        ],
+        functionName
+      );
+    },
     async getDiagnostics(file: string) {
       const sem = await semanticallyAnalyzeGLSL(file, {
         fileVersions,
@@ -341,8 +451,6 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
 
       const diagnostics: GLSLDiagnostic[] = [];
 
-      console.log(sem.translationUnit);
-
       mapAST(sem.translationUnit, {
         error(err, mapInner) {
           diagnostics.push({
@@ -350,7 +458,6 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
             end: err.range.end,
             why: err.data.why,
           });
-          console.log("syntaxerr", err);
           return err;
         },
 
@@ -396,6 +503,49 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
       });
 
       mapAST(sem.translationUnit, {
+        stmt(stmt, mapInner) {
+          return mapInner(stmt);
+        },
+
+        decl(decl, mapInner) {
+          const scopes = getEnclosingScopes(sem.globalScope, decl.range.start);
+          if (
+            decl.data.type === "declarator-list" &&
+            decl.data.declaratorList.data.init.data.type === "type"
+          ) {
+            for (const d of decl.data.declaratorList.data.declarations.data) {
+              const decltype =
+                decl.data.declaratorList.data.init.data.declType.data;
+              if (d.data.variant?.data.type === "sized-array") {
+                const sizeType = getExprType(d.data.variant.data.size, scopes);
+                if (
+                  sizeType.type &&
+                  (!isIntOrIntVector(sizeType.type) || !isScalar(sizeType.type))
+                ) {
+                  diagnostics.push({
+                    start: decl.range.start,
+                    end: decl.range.end,
+                    why: `Array size must be an integer, but an expression of type '${stringifyType(sizeType.type)}' was received.`,
+                  });
+                }
+              } else if (d.data.variant) {
+                const init = d.data.variant?.data.initializer;
+                const initType = getExprType(init, scopes);
+
+                if (initType.type && !isSameType(decltype, initType.type)) {
+                  diagnostics.push({
+                    start: decl.range.start,
+                    end: decl.range.end,
+                    why: `Cannot assign object of type '${stringifyType(initType.type)}' to variable of type '${stringifyType(decltype)}'.`,
+                  });
+                }
+              }
+            }
+          }
+
+          return mapInner(decl);
+        },
+
         expr(expr, mapInner) {
           const scope = getEnclosingScopes(sem.globalScope, expr.range.start);
           const type = getExprType(expr, scope);
@@ -460,9 +610,15 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
       const fnproto = scopeFind(enclosingScopes, fnname);
       if (!fnproto || fnproto.type !== "function") return;
 
+      const sig = Array.isArray(fnproto.signatures)
+        ? fnproto.signatures[0].data.prototype
+        : undefined;
+      if (!sig) return;
+
       return {
         name: fnname,
-        signature: fnproto.signature,
+        // TODO: handle overloads properly
+        signature: sig,
       };
     },
 

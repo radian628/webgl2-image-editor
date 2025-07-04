@@ -88,7 +88,7 @@ export namespace FormatGLSLPacked {
       case "field-access":
         return `${expr(e.data.left, {
           precedence: minPrecedence,
-        })}.${expr(e.data.right, c)}`;
+        })}.${e.data.right.type === "variable" ? e.data.right.variable.data : exprmax(e.data.right.function)}`;
       case "unary-op": {
         const prec = c.precedence;
         const c2 = {
@@ -112,11 +112,6 @@ export namespace FormatGLSLPacked {
                 .map((arg) => expr(arg, { precedence: maxPrecedence }))
                 .join(",")
         })`;
-      case "function-call-field-access":
-        return `${expr(e.data.left, { precedence: minPrecedence })}.${expr(
-          e.data.right,
-          { precedence: minPrecedence }
-        )}`;
       case "error":
         return "###ERROR###";
     }

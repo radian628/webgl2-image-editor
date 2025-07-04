@@ -55,6 +55,7 @@ type IntExpr = {
   type: "int";
   int: number;
   asString: string; // need this so autoformatter doesn't change the number
+  unsigned: boolean;
   _isExpr: true;
 };
 
@@ -71,7 +72,7 @@ type BoolExpr = {
   _isExpr: true;
 };
 
-type VariableExpr = {
+export type VariableExpr = {
   type: "ident";
   ident: string;
   _isExpr: true;
@@ -131,7 +132,7 @@ export type AssignmentExpr = {
   _isExpr: true;
 };
 
-type UnaryOpExpr = {
+export type UnaryOpExpr = {
   type: "unary-op";
   left: ASTNode<Expr>;
   op: "++" | "--" | "!" | "~";
@@ -139,10 +140,18 @@ type UnaryOpExpr = {
   _isExpr: true;
 };
 
-type FieldAccessExpr = {
+export type FieldAccessExpr = {
   type: "field-access";
   left: ASTNode<Expr>;
-  right: ASTNode<Expr>;
+  right:
+    | {
+        type: "variable";
+        variable: Commented<string>;
+      }
+    | {
+        type: "function";
+        function: ASTNode<FunctionCallExpr>;
+      };
   _isExpr: true;
 };
 
@@ -151,13 +160,6 @@ export type FunctionCallExpr = {
   identifier: FunctionIdentifier;
   args: ASTNode<Expr>[];
   isVoid: boolean;
-  _isExpr: true;
-};
-
-type FunctionCallFieldAccessExpr = {
-  type: "function-call-field-access";
-  left: ASTNode<Expr>;
-  right: ASTNode<Expr>;
   _isExpr: true;
 };
 
@@ -171,7 +173,6 @@ export type Expr =
   | UnaryOpExpr
   | FieldAccessExpr
   | FunctionCallExpr
-  | FunctionCallFieldAccessExpr
   | ConditionalExpr
   | AssignmentExpr;
 
@@ -324,11 +325,14 @@ export type ASTNode<T> = {
   _isNode: true;
 };
 
-export function dummyNode<T>(data: T): ASTNode<T> {
+export function dummyNode<T>(
+  data: T,
+  range?: { start: number; end: number }
+): ASTNode<T> {
   return {
     data,
     comments: [],
-    range: { start: 0, end: 0 },
+    range: range ?? { start: 0, end: 0 },
     _isNode: true,
   };
 }
@@ -522,7 +526,7 @@ export type ParameterDeclarator = {
 export type FunctionHeader = {
   fullySpecifiedType: Commented<FullySpecifiedType>;
   name: Commented<string>;
-  parameters?: Commented<Commented<ParameterDeclaration>[]>;
+  parameters?: Commented<ASTNode<ParameterDeclaration>[]>;
 };
 
 export type ParameterDeclaration = {
@@ -626,8 +630,8 @@ export const assignment_expression = rule<TokenKind, ASTNode<Expr>>();
 const assignment_operator = rule<TokenKind, AssignmentOperator>();
 export const expression = rule<TokenKind, ASTNode<Expr>>();
 const constant_expression = rule<TokenKind, ASTNode<Expr>>();
-export const declaration = rule<TokenKind, Commented<Declaration>>();
-const function_prototype = rule<TokenKind, Commented<FunctionHeader>>();
+export const declaration = rule<TokenKind, ASTNode<Declaration>>();
+export const function_prototype = rule<TokenKind, Commented<FunctionHeader>>();
 const function_declarator = rule<TokenKind, Commented<FunctionHeader>>();
 const function_header_with_parameters = rule<
   TokenKind,
@@ -638,10 +642,7 @@ export const parameter_declarator = rule<
   TokenKind,
   Commented<ParameterDeclarator>
 >();
-const parameter_declaration = rule<
-  TokenKind,
-  Commented<ParameterDeclaration>
->();
+const parameter_declaration = rule<TokenKind, ASTNode<ParameterDeclaration>>();
 const parameter_qualifier = rule<
   TokenKind,
   ASTNode<ParameterQualifier> | undefined
@@ -762,6 +763,7 @@ primary_expression.setPattern(
               type: "int",
               int: num,
               asString: tok.text,
+              unsigned: tok.text.endsWith("u") || tok.text.endsWith("U"),
               _isExpr: true,
             };
           }
@@ -798,16 +800,37 @@ const field_access: Parser<TokenKind, ASTNode<Expr>> =
   // a.b
   binop_generic(
     alt_sc(function_call_generic, failOnErrExpr(primary_expression)),
-    // failOnErrExpr(primary_expression),
-    seq(comment_parser, str("."), comment_parser, postfix_expression),
+    apply(
+      seq(
+        comment_parser,
+        str("."),
+        comment_parser,
+        alt_sc(
+          apply(function_call_generic, (f) => ({
+            type: "function" as "function",
+            function: f,
+          })),
+          apply(
+            with_comment_before(
+              apply(tok(TokenKind.Identifier), (t) => t.text)
+            ),
+            (t) => ({
+              type: "variable" as "variable",
+              variable: t,
+            })
+          )
+        )
+      ),
+      (s) => s[3]
+    ),
     (left: ASTNode<Expr>, right) => [
       {
         type: "field-access",
         left,
-        right: right[3],
+        right: right,
         _isExpr: true,
       },
-      [right[0], right[2]],
+      [],
     ]
   );
 
@@ -863,22 +886,22 @@ function_call_or_method.setPattern(
   // NOTE: THIS DIFFERS FROM THE GRAMMAR!!
   // METHOD CALLS HAVE BEEN MOVED TO postfix_expression
   // TO PREVENT IT FROM DEFAULTING TO PROPERTY ACCESS
-  alt_sc(
-    function_call_generic,
-    binop_generic(
-      postfix_expression,
-      seq(comment_parser, str("."), function_call_generic),
-      (left, right) => [
-        {
-          type: "function-call-field-access",
-          left,
-          right: right[2],
-          _isExpr: true,
-        },
-        [right[0]],
-      ]
-    )
-  )
+  // alt_sc(
+  function_call_generic
+  // binop_generic(
+  //   postfix_expression,
+  //   seq(comment_parser, str("."), function_call_generic),
+  //   (left, right) => [
+  //     {
+  //       type: "function-call-field-access",
+  //       left,
+  //       right: right[2],
+  //       _isExpr: true,
+  //     },
+  //     [right[0]],
+  //   ]
+  // )
+  // )
 );
 
 function_call_generic.setPattern(
@@ -1046,13 +1069,13 @@ conditional_expression.setPattern(
           str(":"),
           assignment_expression
         ),
-        (l) =>
-          ({
-            type: "conditional",
-            condition: l[0],
-            ifTrue: l[3],
-            ifFalse: l[6],
-          }) as ConditionalExpr,
+        (l) => ({
+          type: "conditional",
+          condition: l[0],
+          ifTrue: l[3],
+          ifFalse: l[6],
+          _isExpr: true,
+        }),
         (l) => [l[1], l[4]]
       )
     ),
@@ -1105,87 +1128,94 @@ expression.setPattern(binop(assignment_expression, expression, lstr(",")));
 constant_expression.setPattern(conditional_expression);
 
 declaration.setPattern(
-  alt_sc(
-    commentify(
-      seq(init_declarator_list, comment_parser, str(";")),
-      (s) =>
-        ({
-          type: "declarator-list",
-          declaratorList: s[0],
-          _isDecl: true,
-        }) satisfies Declaration,
-      (s) => [s[1]]
-    ),
-    commentify(
-      seq(
-        apply(type_qualifier, (x) => x),
-        with_comment_before(apply(tok(TokenKind.Identifier), (t) => t.text)),
-        comment_parser,
-        str("{"),
-        struct_declaration_list,
-        comment_parser,
-        str("}"),
-        opt_sc(
-          seq(
-            with_comment_before(
-              apply(tok(TokenKind.Identifier), (t) => t.text)
-            ),
-            opt_sc(
-              seq(
-                comment_parser,
-                str("["),
-                constant_expression,
-                comment_parser,
-                str("]")
+  nodeify_commented<Declaration>(
+    alt_sc(
+      commentify(
+        seq(init_declarator_list, comment_parser, str(";")),
+        (s) =>
+          ({
+            type: "declarator-list",
+            declaratorList: s[0],
+            _isDecl: true,
+          }) satisfies Declaration,
+        (s) => [s[1]]
+      ),
+      commentify(
+        seq(
+          apply(type_qualifier, (x) => x),
+          with_comment_before(apply(tok(TokenKind.Identifier), (t) => t.text)),
+          comment_parser,
+          str("{"),
+          struct_declaration_list,
+          comment_parser,
+          str("}"),
+          opt_sc(
+            seq(
+              with_comment_before(
+                apply(tok(TokenKind.Identifier), (t) => t.text)
+              ),
+              opt_sc(
+                seq(
+                  comment_parser,
+                  str("["),
+                  constant_expression,
+                  comment_parser,
+                  str("]")
+                )
               )
             )
-          )
+          ),
+          comment_parser,
+          str(";")
         ),
-        comment_parser,
-        str(";")
+        (s) =>
+          ({
+            type: "struct",
+            typeQualifier: s[0],
+            name: s[1],
+            name2: s[7]?.[0],
+            declarationList: s[4],
+            constantExpr: s[7]?.[1]?.[2],
+            _isDecl: true,
+          }) satisfies Declaration,
+        (s) => [
+          s[2],
+          s[5],
+          ...(s[7]?.[1] ? [s[7][1][0], s[7][1][3]] : []),
+          s[8],
+        ]
       ),
-      (s) =>
-        ({
-          type: "struct",
+      commentify(
+        seq(function_prototype, comment_parser, str(";")),
+        (s) => ({ type: "function-prototype", prototype: s[0], _isDecl: true }),
+        (s) => [s[1]]
+      ),
+      commentify(
+        seq(
+          str("precision"),
+          precision_qualifier,
+          type_specifier_no_prec,
+          comment_parser,
+          str(";")
+        ),
+        (s) =>
+          ({
+            type: "type-specifier",
+            precision: s[1],
+            specifier: s[2],
+            _isDecl: true,
+          }) satisfies Declaration,
+        (s) => [s[3]]
+      ),
+      commentify(
+        seq(type_qualifier, comment_parser, str(";")),
+        (s) => ({
+          type: "type-qualifier",
           typeQualifier: s[0],
-          name: s[1],
-          name2: s[7]?.[0],
-          declarationList: s[4],
-          constantExpr: s[7]?.[1]?.[2],
           _isDecl: true,
-        }) satisfies Declaration,
-      (s) => [s[2], s[5], ...(s[7]?.[1] ? [s[7][1][0], s[7][1][3]] : []), s[8]]
-    ),
-    commentify(
-      seq(function_prototype, comment_parser, str(";")),
-      (s) => ({ type: "function-prototype", prototype: s[0], _isDecl: true }),
-      (s) => [s[1]]
-    ),
-    commentify(
-      seq(
-        str("precision"),
-        precision_qualifier,
-        type_specifier_no_prec,
-        comment_parser,
-        str(";")
-      ),
-      (s) =>
-        ({
-          type: "type-specifier",
-          precision: s[1],
-          specifier: s[2],
-          _isDecl: true,
-        }) satisfies Declaration,
-      (s) => [s[3]]
-    ),
-    commentify(
-      seq(type_qualifier, comment_parser, str(";")),
-      (s) => ({
-        type: "type-qualifier",
-        typeQualifier: s[0],
-        _isDecl: true,
-      }),
-      (s) => [s[1]]
+        }),
+        (s) => [s[1]]
+      )
     )
   )
 );
@@ -1213,7 +1243,7 @@ function_header_with_parameters.setPattern(
           rep_sc(seq(comment_parser, str(","), parameter_declaration))
         ),
         (s) =>
-          [s[0], ...s[1].map((v) => v[2])] as Commented<ParameterDeclaration>[],
+          [s[0], ...s[1].map((v) => v[2])] as ASTNode<ParameterDeclaration>[],
         (s) => s[1].map((v) => v[0])
       )
     ),
@@ -1260,28 +1290,30 @@ parameter_declarator.setPattern(
 );
 
 parameter_declaration.setPattern(
-  with_comment_before(
-    apply(
-      seq(
-        opt_sc(parameter_type_qualifier),
-        parameter_qualifier,
-        alt_sc(
-          apply(parameter_declarator, (pd) => ({
-            type: "declarator",
-            declarator: pd,
-          })),
-          apply(parameter_type_specifier, (pts) => ({
-            type: "specifier",
-            specifier: pts,
-          }))
-        )
-      ),
-      ([ptq, pq, dos]) =>
-        ({
-          parameterTypeQualifier: ptq,
-          parameterQualifier: pq,
-          declaratorOrSpecifier: dos,
-        }) as ParameterDeclaration
+  nodeify_commented(
+    with_comment_before(
+      apply(
+        seq(
+          opt_sc(parameter_type_qualifier),
+          parameter_qualifier,
+          alt_sc(
+            apply(parameter_declarator, (pd) => ({
+              type: "declarator",
+              declarator: pd,
+            })),
+            apply(parameter_type_specifier, (pts) => ({
+              type: "specifier",
+              specifier: pts,
+            }))
+          )
+        ),
+        ([ptq, pq, dos]) =>
+          ({
+            parameterTypeQualifier: ptq,
+            parameterQualifier: pq,
+            declaratorOrSpecifier: dos,
+          }) as ParameterDeclaration
+      )
     )
   )
 );
@@ -1301,15 +1333,6 @@ const identifier_declaration: Parser<
     with_comment_before(apply(tok(TokenKind.Identifier), (t) => t.text)),
     alt_sc(
       commentify(
-        seq(str("["), constant_expression, comment_parser, str("]")),
-        (s) =>
-          ({
-            type: "sized-array",
-            size: s[1],
-          }) satisfies SingleDeclarationVariant,
-        (s) => [s[2]]
-      ),
-      commentify(
         seq(
           str("["),
           opt_sc(constant_expression),
@@ -1326,6 +1349,15 @@ const identifier_declaration: Parser<
             initializer: s[6],
           }) satisfies SingleDeclarationVariant,
         (s) => [s[2], s[4]]
+      ),
+      commentify(
+        seq(str("["), constant_expression, comment_parser, str("]")),
+        (s) =>
+          ({
+            type: "sized-array",
+            size: s[1],
+          }) satisfies SingleDeclarationVariant,
+        (s) => [s[2]]
       ),
       commentify(
         seq(comment_parser, str("="), initializer),

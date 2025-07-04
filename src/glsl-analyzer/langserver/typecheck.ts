@@ -4,14 +4,19 @@ import {
   AssignmentExpr,
   ASTNode,
   BinaryOpExpr,
+  Commented,
   dummyNode,
   Expr,
   FullySpecifiedType,
+  FunctionCallExpr,
+  ParameterDeclaration,
   TypeNoPrec,
+  TypeSpecifier,
 } from "../parser";
 import { getFunctionCallName, Scope, scopeFind } from "./glsl-language-server";
+import { getSwizzleRegex } from "./validate-swizzle";
 
-function isSameType(
+export function isSameType(
   a: FullySpecifiedType | undefined,
   b: FullySpecifiedType | undefined
 ): boolean {
@@ -26,7 +31,12 @@ function isSameType(
   )
     return false;
 
-  return aspec.typeName.data.name.data === bspec.typeName.data.name.data;
+  // TODO: check array sizes
+
+  return (
+    aspec.typeName.data.name.data === bspec.typeName.data.name.data &&
+    aspec.arrayType.type === bspec.arrayType.type
+  );
 }
 
 function getTypeName(t: FullySpecifiedType | undefined): string | undefined {
@@ -38,49 +48,95 @@ function getTypeName(t: FullySpecifiedType | undefined): string | undefined {
   return name;
 }
 
-function isFloatOrFloatVector(t: FullySpecifiedType | undefined) {
+export function isFloatOrFloatVector(t: FullySpecifiedType | undefined) {
   const name = getTypeName(t);
   if (!name) return false;
   return ["float", "vec2", "vec3", "vec4"].includes(name);
 }
 
-function isSignedIntOrIntVector(t: FullySpecifiedType | undefined) {
+export function isSignedIntOrIntVector(t: FullySpecifiedType | undefined) {
   const name = getTypeName(t);
   if (!name) return false;
   return ["int", "ivec2", "ivec3", "ivec4"].includes(name);
 }
 
-function isUnsignedIntOrIntVector(t: FullySpecifiedType | undefined) {
+export function isUnsignedIntOrIntVector(t: FullySpecifiedType | undefined) {
   const name = getTypeName(t);
   if (!name) return false;
   return ["uint", "uvec2", "uvec3", "uvec4"].includes(name);
 }
 
-function isBoolOrBoolVector(t: FullySpecifiedType | undefined) {
+export function isBoolOrBoolVector(t: FullySpecifiedType | undefined) {
   const name = getTypeName(t);
   if (!name) return false;
   return ["bool", "bvec2", "bvec3", "bvec4"].includes(name);
 }
 
-function isScalar(t: FullySpecifiedType | undefined) {
+export function isScalar(t: FullySpecifiedType | undefined) {
   const name = getTypeName(t);
   if (!name) return false;
   return ["float", "int", "uint", "bool"].includes(name);
 }
 
-function isIntOrIntVector(t: FullySpecifiedType | undefined) {
+export function isIntOrIntVector(t: FullySpecifiedType | undefined) {
   return isSignedIntOrIntVector(t) || isUnsignedIntOrIntVector(t);
 }
 
-function isNumberOrNumberVector(t: FullySpecifiedType | undefined) {
+export function isNumberOrNumberVector(t: FullySpecifiedType | undefined) {
   return isIntOrIntVector(t) || isFloatOrFloatVector(t);
 }
 
-function isPrimitiveOrPrimitiveVector(t: FullySpecifiedType | undefined) {
+export function isPrimitiveOrPrimitiveVector(
+  t: FullySpecifiedType | undefined
+) {
   return isNumberOrNumberVector(t) || isBoolOrBoolVector(t);
 }
 
-function getTypePrimitiveCategory(
+export function getPrimitiveStringFromTypeAndArity(
+  type: "float" | "int" | "uint" | "bool",
+  arity: 1 | 2 | 3 | 4
+) {
+  return {
+    float: {
+      1: "float",
+      2: "vec2",
+      3: "vec3",
+      4: "vec4",
+    },
+    int: {
+      1: "int",
+      2: "ivec2",
+      3: "ivec3",
+      4: "ivec4",
+    },
+    uint: {
+      1: "uint",
+      2: "uvec2",
+      3: "uvec3",
+      4: "uvec4",
+    },
+    bool: {
+      1: "bool",
+      2: "bvec2",
+      3: "bvec3",
+      4: "bvec4",
+    },
+  }[type][arity];
+}
+
+export function getPrimitiveFromTypeAndArity(
+  type: "float" | "int" | "uint" | "bool",
+  arity: 1 | 2 | 3 | 4
+): FullySpecifiedType {
+  const name = getPrimitiveStringFromTypeAndArity(type, arity);
+  return builtinType(name);
+}
+
+export function isArrayType(t: FullySpecifiedType | undefined) {
+  return t ? t?.specifier.data.specifier.data.arrayType.type !== "none" : false;
+}
+
+export function getTypePrimitiveCategory(
   t: FullySpecifiedType | undefined
 ): "float" | "int" | "uint" | "bool" | undefined {
   const name = getTypeName(t);
@@ -107,7 +163,7 @@ function getTypePrimitiveCategory(
   )[name];
 }
 
-function getTypePrimitiveArity(
+export function getTypePrimitiveArity(
   t: FullySpecifiedType | undefined
 ): 1 | 2 | 3 | 4 | undefined {
   const name = getTypeName(t);
@@ -134,7 +190,7 @@ function getTypePrimitiveArity(
   )[name];
 }
 
-function builtinType(
+export function builtinType(
   name: string,
   array?: TypeNoPrec["arrayType"]
 ): FullySpecifiedType {
@@ -152,13 +208,13 @@ function builtinType(
   };
 }
 
-type TypeError = {
+export type TypeError = {
   start: number;
   end: number;
   why: string;
 }[];
 
-function nodeTypeErr(node: ASTNode<any>, why: string): TypeError {
+export function nodeTypeErr(node: ASTNode<any>, why: string): TypeError {
   return [
     {
       start: node.range.start,
@@ -166,6 +222,67 @@ function nodeTypeErr(node: ASTNode<any>, why: string): TypeError {
       why,
     },
   ];
+}
+
+export function getFunctionParamType(
+  param: ParameterDeclaration
+): FullySpecifiedType {
+  if (param.declaratorOrSpecifier.type === "declarator") {
+    return {
+      specifier: param.declaratorOrSpecifier.declarator.data.typeSpecifier,
+    };
+  } else {
+    return { specifier: param.declaratorOrSpecifier.specifier };
+  }
+}
+
+export function getFunctionParamTypeNode(
+  param: ASTNode<ParameterDeclaration>
+): Commented<FullySpecifiedType> {
+  const range = param.range;
+  if (param.data.declaratorOrSpecifier.type === "declarator") {
+    return dummyNode(
+      {
+        specifier:
+          param.data.declaratorOrSpecifier.declarator.data.typeSpecifier,
+      },
+      range
+    );
+  } else {
+    return dummyNode(
+      { specifier: param.data.declaratorOrSpecifier.specifier },
+      range
+    );
+  }
+}
+
+export function unarrayType(type: FullySpecifiedType): FullySpecifiedType {
+  const out = structuredClone(type);
+  out.specifier.data.specifier.data.arrayType = { type: "none" };
+  return out;
+}
+
+export function arrayifyType(
+  type: FullySpecifiedType,
+  size?: number
+): FullySpecifiedType {
+  const out = structuredClone(type);
+  out.specifier.data.specifier.data.arrayType =
+    size !== undefined
+      ? {
+          type: "static",
+          size: dummyNode<Expr>({
+            type: "int",
+            int: size,
+            asString: size.toString(),
+            _isExpr: true,
+            unsigned: true,
+          }),
+        }
+      : {
+          type: "dynamic",
+        };
+  return out;
 }
 
 type BinaryOpLikeExpression = BinaryOpExpr | AssignmentExpr;
@@ -216,7 +333,7 @@ function errorForDifferentTypesIncludingBroadcasting(
   };
 }
 
-function stringifyType(type: FullySpecifiedType) {
+export function stringifyType(type: FullySpecifiedType) {
   return fmt.fullySpecifiedType(dummyNode(type));
 }
 
@@ -258,7 +375,6 @@ function errorForNonexistentBinOpTypes(
   return undefined;
 }
 
-// TODO: handle broadcasting (e.g. vec4 + float)
 function getArithmeticExpressionType(
   expr: ASTNode<BinaryOpLikeExpression>,
   scopeChain: Scope[]
@@ -643,7 +759,10 @@ export function getExprType(
 ): TypeResult {
   switch (expr.data.type) {
     case "int":
-      return { type: builtinType("int"), errors: [] };
+      return {
+        type: expr.data.unsigned ? builtinType("uint") : builtinType("int"),
+        errors: [],
+      };
     case "float":
       return { type: builtinType("float"), errors: [] };
     case "bool":
@@ -653,6 +772,7 @@ export function getExprType(
       const paramTypes = expr.data.args.map((a) => getExprType(a, scopeChain));
       const paramErrors = paramTypes.flatMap((p) => p.errors);
       const fn = scopeFind(scopeChain, fnName);
+      const fexpr = expr as ASTNode<FunctionCallExpr>;
       if (!fn)
         return {
           errors: nodeTypeErr(
@@ -667,7 +787,94 @@ export function getExprType(
             `'${fnName}' exists, but is not a function.`
           ).concat(paramErrors),
         };
-      return { type: fn.signature.data.fullySpecifiedType.data, errors: [] };
+
+      if (
+        expr.data.identifier.type === "type-specifier" &&
+        expr.data.identifier.specifier.data.arrayType.type !== "none"
+      ) {
+        const arrayType = expr.data.identifier.specifier.data.arrayType;
+
+        const fullArrayType: FullySpecifiedType = {
+          specifier: dummyNode<TypeSpecifier>({
+            type: "type-specifier",
+            specifier: expr.data.identifier.specifier,
+          }),
+        };
+
+        const parameterWrongTypeErrors = paramErrors.flatMap((e, i) =>
+          paramTypes[i].type
+            ? isSameType(paramTypes[i].type, unarrayType(fullArrayType))
+              ? []
+              : nodeTypeErr(
+                  fexpr.data.args[i],
+                  `Argument of type '${stringifyType(paramTypes[i].type)}' is not assignable to type '${stringifyType(unarrayType(fullArrayType))}'.`
+                )
+            : []
+        );
+
+        // TODO: properly handle sized arrays
+        if (arrayType.type === "static") {
+          return {
+            type: fullArrayType,
+            errors: paramErrors.concat(
+              parameterWrongTypeErrors.concat(paramErrors)
+            ),
+          };
+        } else {
+          return {
+            type: fullArrayType,
+            errors: paramErrors.concat(
+              parameterWrongTypeErrors.concat(paramErrors)
+            ),
+          };
+        }
+      } else {
+        if (Array.isArray(fn.signatures)) {
+          for (const sig of fn.signatures) {
+            const params = sig.data.prototype.data.parameters?.data ?? [];
+            if (paramTypes.length !== params.length) continue;
+            let matches = true;
+            for (let i = 0; i < params.length; i++) {
+              const suppliedType = paramTypes[i];
+              if (
+                suppliedType.type &&
+                !isSameType(
+                  suppliedType.type,
+                  getFunctionParamType(params[i].data)
+                )
+              ) {
+                matches = false;
+              }
+            }
+
+            if (matches) {
+              return {
+                type: sig.data.prototype.data.fullySpecifiedType.data,
+                errors: paramErrors,
+              };
+            }
+          }
+        } else {
+          const retType = fn.signatures(
+            fexpr,
+            paramTypes.map((t, i) => ({
+              expr: fexpr.data.args[i],
+              type: t.type,
+            }))
+          );
+          return {
+            errors: paramErrors.concat(retType.errors),
+            type: retType.type,
+          };
+        }
+      }
+
+      return {
+        errors: nodeTypeErr(
+          expr,
+          `No matching overload '${fnName}(${paramTypes.map((t) => (t.type ? stringifyType(t.type) : "unknown")).join(", ")})' found.`
+        ).concat(paramErrors),
+      };
     case "ident":
       const name = expr.data.ident;
       const defn = scopeFind(scopeChain, name);
@@ -722,7 +929,6 @@ export function getExprType(
           return getArrayAccessExpressionType(bexpr, scopeChain);
       }
     case "assignment":
-      // TODO: revamp the typechecker functions to tell you the correct operator
       const aexpr = expr as ASTNode<AssignmentExpr>;
       switch (expr.data.op) {
         case "+=":
@@ -791,12 +997,12 @@ export function getExprType(
           builtinType("bool")
         );
         if (!isConditionBoolean) {
-          errors.concat(
+          errors = errors.concat(
             nodeTypeErr(
               expr.data.condition,
               `This expression is of type '${stringifyType(
                 condType.type
-              )}', which canot be used as a condition, as a condition needs to be a boolean.`
+              )}', which cannot be used as a condition, as a condition needs to be a boolean.`
             )
           );
         }
@@ -805,12 +1011,12 @@ export function getExprType(
       if (
         ifTrueType.type &&
         ifFalseType.type &&
-        isSameType(ifTrueType.type, ifFalseType.type)
+        !isSameType(ifTrueType.type, ifFalseType.type)
       ) {
         errors = errors.concat(
           nodeTypeErr(
-            expr.data.condition,
-            `Both branches of a conditional must be the same type. However, these branches are of type '${stringifyType(ifTrueType.type)}' and ${stringifyType(ifFalseType.type)}`
+            expr,
+            `Both branches of a conditional must be the same type. However, these branches are of type '${stringifyType(ifTrueType.type)}' and '${stringifyType(ifFalseType.type)}'`
           )
         );
       }
@@ -912,21 +1118,49 @@ export function getExprType(
           };
         }
 
-        const allowedSwizzles = {
-          2: /[xy]{1,2}|[rg]{1,2}|[st]{1,2}/,
-          3: /[xyz]{1,3}|[rgb]{1,3}|[stp]{1,3}/,
-          4: /[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4}/,
-        }[arity];
+        // TODO: handle structs and methods properly
 
-        const swizzleMatch = expr.data.right;
+        const allowedSwizzles = getSwizzleRegex(arity);
 
-        errors = errors.concat(nodeTypeErr(expr, ``));
+        if (expr.data.right.type === "function") {
+          errors = errors.concat(
+            nodeTypeErr(
+              expr,
+              `Type '${stringifyType(operandType.type)}' has no methods.`
+            )
+          );
+        } else {
+          // swizzle
+          const fieldname = expr.data.right.variable.data;
+          const swizzleMatch = fieldname.match(allowedSwizzles)?.[0];
+          if (swizzleMatch && swizzleMatch.length === fieldname.length) {
+            const retType = getPrimitiveFromTypeAndArity(
+              baseType,
+              swizzleMatch.length as 1 | 2 | 3 | 4
+            );
+
+            return {
+              errors,
+              type: retType,
+            };
+          } else {
+            errors = errors.concat(
+              nodeTypeErr(
+                expr,
+                `Field '${fieldname}' does not exist on type '${stringifyType(operandType.type)}'.`
+              )
+            );
+          }
+        }
+
+        return {
+          errors,
+        };
       }
+
+      return {
+        errors,
+      };
     }
   }
-
-  // TODO: finish this
-  return {
-    errors: [],
-  };
 }
