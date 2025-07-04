@@ -6,12 +6,18 @@ import {
   Expr,
   FieldAccessExpr,
   FullySpecifiedType,
+  FunctionCallExpr,
   Stmt,
   TranslationUnit,
   UnaryOpExpr,
   VariableExpr,
 } from "../parser";
-import { getScopeOf, Scope, scopeFind } from "./glsl-language-server";
+import {
+  getFunctionCallName,
+  getScopeOf,
+  Scope,
+  scopeFind,
+} from "./glsl-language-server";
 import {
   arrayifyType,
   getPrimitiveFromTypeAndArity,
@@ -26,7 +32,7 @@ import {
   swizzleCharToIndex,
 } from "./validate-swizzle";
 
-type GLSLValue =
+export type GLSLValue =
   | {
       type: "vector";
       vectorType: "int" | "float" | "uint" | "bool";
@@ -120,6 +126,8 @@ function vec(
     value,
   };
 }
+
+export const constructVectorValue = vec;
 
 const error: GLSLValue = {
   type: "error",
@@ -656,6 +664,7 @@ export function evaluateExpression(
       }
     }
     case "binary-op":
+      console.log("THIS IS A BINARY OP");
       const bexpr = expr as ASTNode<BinaryOpExpr>;
       const a = evalexpr(expr.data.left, stack);
       const b = evalexpr(expr.data.right, stack);
@@ -708,6 +717,7 @@ export function evaluateExpression(
             !["int", "uint"].includes(b.vectorType)
           )
             return error;
+          console.log("array subscript", a, b);
           return a.value[b.value[0]] ?? error;
       }
     case "field-access": {
@@ -724,8 +734,18 @@ export function evaluateExpression(
       return error;
     }
     case "function-call":
-      // TODO: support function calls
-      return error;
+      const fndef = scopeFind(
+        stack.at(-1)!.correspondingScopes,
+        getFunctionCallName(expr.data as FunctionCallExpr)
+      );
+      if (fndef?.type !== "function") return error;
+      if (fndef.signatures.type === "function") {
+        return fndef.signatures.evaluate(
+          expr.data.args.map((arg) => evalexpr(arg, stack))
+        );
+      } else {
+        return error;
+      }
   }
 }
 
@@ -1024,9 +1044,9 @@ export function evaluateTranslationUnit(
 
   const fn = scopeFind(scopes, entryPoint);
 
-  if (fn && fn.type === "function" && Array.isArray(fn.signatures)) {
-    const sig = fn.signatures[0];
-    evaluateStatement(fn.signatures[0].data.body, [stackFrame]);
+  if (fn && fn.type === "function" && fn.signatures.type === "list") {
+    const sig = fn.signatures.list[0];
+    evaluateStatement(fn.signatures.list[0].data.body, [stackFrame]);
   }
 
   return stackFrame;

@@ -14,30 +14,43 @@ import {
   TypeSpecifier,
 } from "../parser";
 import { getFunctionCallName, Scope, scopeFind } from "./glsl-language-server";
+import {
+  Arity,
+  builtinTypes,
+  convertType,
+  getArity,
+  getPType,
+  GLSLType,
+  isIntegralVector,
+  isNumericalVector,
+  isSameType,
+  isScalar,
+  stringifyType,
+  TypeResult,
+} from "./glsltype";
 import { getSwizzleRegex } from "./validate-swizzle";
 
-export function isSameType(
-  a: FullySpecifiedType | undefined,
-  b: FullySpecifiedType | undefined
-): boolean {
-  if (!a || !b) return false;
+// export function isSameType( a: FullySpecifiedType | undefined,
+//   b: FullySpecifiedType | undefined
+// ): boolean {
+//   if (!a || !b) return false;
 
-  const aspec = a.specifier.data.specifier.data;
-  const bspec = b.specifier.data.specifier.data;
+//   const aspec = a.specifier.data.specifier.data;
+//   const bspec = b.specifier.data.specifier.data;
 
-  if (
-    aspec.typeName.data.type === "struct" ||
-    bspec.typeName.data.type === "struct"
-  )
-    return false;
+//   if (
+//     aspec.typeName.data.type === "struct" ||
+//     bspec.typeName.data.type === "struct"
+//   )
+//     return false;
 
-  // TODO: check array sizes
+//   // TODO: check array sizes
 
-  return (
-    aspec.typeName.data.name.data === bspec.typeName.data.name.data &&
-    aspec.arrayType.type === bspec.arrayType.type
-  );
-}
+//   return (
+//     aspec.typeName.data.name.data === bspec.typeName.data.name.data &&
+//     aspec.arrayType.type === bspec.arrayType.type
+//   );
+// }
 
 function getTypeName(t: FullySpecifiedType | undefined): string | undefined {
   if (!t) return undefined;
@@ -72,11 +85,11 @@ export function isBoolOrBoolVector(t: FullySpecifiedType | undefined) {
   return ["bool", "bvec2", "bvec3", "bvec4"].includes(name);
 }
 
-export function isScalar(t: FullySpecifiedType | undefined) {
-  const name = getTypeName(t);
-  if (!name) return false;
-  return ["float", "int", "uint", "bool"].includes(name);
-}
+// export function isScalar(t: FullySpecifiedType | undefined) {
+//   const name = getTypeName(t);
+//   if (!name) return false;
+//   return ["float", "int", "uint", "bool"].includes(name);
+// }
 
 export function isIntOrIntVector(t: FullySpecifiedType | undefined) {
   return isSignedIntOrIntVector(t) || isUnsignedIntOrIntVector(t);
@@ -311,11 +324,11 @@ function errorForDifferentTypesIncludingBroadcasting(
   typeRight: TypeResult,
   expr: ASTNode<BinaryOpLikeExpression>
 ) {
-  const leftCat = getTypePrimitiveCategory(typeLeft.type);
-  const rightCat = getTypePrimitiveCategory(typeRight.type);
+  const leftCat = getPType(typeLeft.type);
+  const rightCat = getPType(typeRight.type);
 
-  const leftArity = getTypePrimitiveArity(typeLeft.type);
-  const rightArity = getTypePrimitiveArity(typeRight.type);
+  const leftArity = getArity(typeLeft.type);
+  const rightArity = getArity(typeRight.type);
 
   if (leftCat && rightCat && leftArity && rightArity && leftCat === rightCat) {
     if (leftArity === rightArity || leftArity === 1 || rightArity === 1) {
@@ -333,9 +346,9 @@ function errorForDifferentTypesIncludingBroadcasting(
   };
 }
 
-export function stringifyType(type: FullySpecifiedType) {
-  return fmt.fullySpecifiedType(dummyNode(type));
-}
+// export function stringifyType(type: FullySpecifiedType) {
+//   return fmt.fullySpecifiedType(dummyNode(type));
+// }
 
 function getBinOpLeftRightAndErrors(
   expr: ASTNode<BinaryOpLikeExpression>,
@@ -352,9 +365,9 @@ function errorForNonexistentBinOpTypes(
   typeLeft: TypeResult,
   typeRight: TypeResult,
   errors: TypeError,
-  defaultTo: () => FullySpecifiedType | undefined,
-  ifLeftExists?: () => FullySpecifiedType | undefined,
-  ifRightExists?: () => FullySpecifiedType | undefined
+  defaultTo: () => GLSLType | undefined,
+  ifLeftExists?: () => GLSLType | undefined,
+  ifRightExists?: () => GLSLType | undefined
 ) {
   if (!typeLeft.type && !typeRight.type) {
     return {
@@ -394,8 +407,8 @@ function getArithmeticExpressionType(
   );
   if (nonexistent) return nonexistent;
 
-  const isLeftNumerical = isNumberOrNumberVector(typeLeft.type);
-  const isRightNumerical = isNumberOrNumberVector(typeRight.type);
+  const isLeftNumerical = isNumericalVector(typeLeft.type);
+  const isRightNumerical = isNumericalVector(typeRight.type);
 
   if (!isLeftNumerical || !isRightNumerical) {
     return {
@@ -446,7 +459,7 @@ function getEqualityExpressionType(
     typeLeft,
     typeRight,
     errors,
-    () => builtinType("bool")
+    () => builtinTypes.bool
   );
   if (nonexistent) return nonexistent;
 
@@ -456,7 +469,7 @@ function getEqualityExpressionType(
 
   return {
     errors,
-    type: builtinType("bool"),
+    type: builtinTypes.bool,
   };
 }
 
@@ -473,15 +486,15 @@ function getComparisonExpressionType(
     typeLeft,
     typeRight,
     errors,
-    () => builtinType("bool")
+    () => builtinTypes.bool
   );
   if (nonexistent) return nonexistent;
 
-  const isLeftScalar = !isScalar(typeLeft.type);
-  const isRightScalar = !isScalar(typeRight.type);
+  const isLeftScalar = isScalar(typeLeft.type);
+  const isRightScalar = isScalar(typeRight.type);
   if (!isLeftScalar || !isRightScalar) {
     return {
-      type: builtinType("bool"),
+      type: builtinTypes.bool,
       errors: errors
         .concat(
           isLeftScalar
@@ -504,14 +517,14 @@ function getComparisonExpressionType(
 
   return {
     errors,
-    type: builtinType("bool"),
+    type: builtinTypes.bool,
   };
 }
 
 function getBitwiseExpressionType(
   expr: ASTNode<BinaryOpLikeExpression>,
   scopeChain: Scope[]
-) {
+): TypeResult {
   const { typeLeft, typeRight, errors } = getBinOpLeftRightAndErrors(
     expr,
     scopeChain
@@ -525,8 +538,8 @@ function getBitwiseExpressionType(
   );
   if (nonexistent) return nonexistent;
 
-  const isLeftIntegral = isIntOrIntVector(typeLeft.type);
-  const isRightIntegral = isIntOrIntVector(typeRight.type);
+  const isLeftIntegral = isIntegralVector(typeLeft.type);
+  const isRightIntegral = isIntegralVector(typeRight.type);
 
   if (!isLeftIntegral || !isRightIntegral) {
     return {
@@ -570,7 +583,7 @@ const getModuloExpressionType = getBitwiseExpressionType;
 function getBitshiftExpressionType(
   expr: ASTNode<BinaryOpLikeExpression>,
   scopeChain: Scope[]
-) {
+): TypeResult {
   const { typeLeft, typeRight, errors } = getBinOpLeftRightAndErrors(
     expr,
     scopeChain
@@ -584,8 +597,8 @@ function getBitshiftExpressionType(
   );
   if (nonexistent) return nonexistent;
 
-  const isLeftIntegral = isIntOrIntVector(typeLeft.type);
-  const isRightIntegral = isIntOrIntVector(typeRight.type);
+  const isLeftIntegral = isIntegralVector(typeLeft.type);
+  const isRightIntegral = isIntegralVector(typeRight.type);
 
   if (!isLeftIntegral || !isRightIntegral) {
     return {
@@ -627,7 +640,7 @@ function getBitshiftExpressionType(
 function getLogicalExpressionType(
   expr: ASTNode<BinaryOpLikeExpression>,
   scopeChain: Scope[]
-) {
+): TypeResult {
   const { typeLeft, typeRight, errors } = getBinOpLeftRightAndErrors(
     expr,
     scopeChain
@@ -636,12 +649,12 @@ function getLogicalExpressionType(
     typeLeft,
     typeRight,
     errors,
-    () => builtinType("bool")
+    () => builtinTypes.bool
   );
   if (nonexistent) return nonexistent;
 
-  const isLeftBool = isSameType(typeLeft.type, builtinType("bool"));
-  const isRightBool = isSameType(typeRight.type, builtinType("bool"));
+  const isLeftBool = isSameType(typeLeft.type, builtinTypes.bool);
+  const isRightBool = isSameType(typeRight.type, builtinTypes.bool);
 
   if (!isLeftBool || !isRightBool) {
     return {
@@ -662,20 +675,20 @@ function getLogicalExpressionType(
                 `Type '${stringifyType(typeRight.type!)}' cannot be applied to operation '${expr.data.op}'.`
               )
         ),
-      type: builtinType("bool"),
+      type: builtinTypes.bool,
     };
   }
 
   return {
     errors,
-    type: builtinType("bool"),
+    type: builtinTypes.bool,
   };
 }
 
 function getCommaExpressionType(
   expr: ASTNode<BinaryOpLikeExpression>,
   scopeChain: Scope[]
-) {
+): TypeResult {
   const { typeLeft, typeRight, errors } = getBinOpLeftRightAndErrors(
     expr,
     scopeChain
@@ -698,7 +711,7 @@ function getCommaExpressionType(
 function getArrayAccessExpressionType(
   expr: ASTNode<BinaryOpLikeExpression>,
   scopeChain: Scope[]
-) {
+): TypeResult {
   const { typeLeft, typeRight, errors } = getBinOpLeftRightAndErrors(
     expr,
     scopeChain
@@ -712,19 +725,19 @@ function getArrayAccessExpressionType(
   );
   if (nonexistent) return nonexistent;
 
-  if (
-    typeLeft.type?.specifier.data.specifier.data.arrayType.type === "none" ||
-    getTypePrimitiveArity(typeLeft.type) === 1
-  ) {
+  if (typeLeft.type!.type !== "array" || isScalar(typeLeft.type)) {
     errors.push(
       ...nodeTypeErr(
         expr.data.left,
         `Received type '${stringifyType(typeLeft.type!)}', expected an array or a vector.`
       )
     );
+    return {
+      errors,
+    };
   }
 
-  if (!isIntOrIntVector(typeRight.type)) {
+  if (!isIntegralVector(typeRight.type)) {
     errors.push(
       ...nodeTypeErr(
         expr.data.right,
@@ -744,14 +757,9 @@ function getArrayAccessExpressionType(
 
   return {
     errors,
-    type: builtinType(getTypeName(typeLeft.type) ?? "unknown"),
+    type: typeLeft.type?.elementType,
   };
 }
-
-export type TypeResult = {
-  type?: FullySpecifiedType;
-  errors: TypeError;
-};
 
 export function getExprType(
   expr: ASTNode<Expr>,
@@ -760,17 +768,17 @@ export function getExprType(
   switch (expr.data.type) {
     case "int":
       return {
-        type: expr.data.unsigned ? builtinType("uint") : builtinType("int"),
+        type: expr.data.unsigned ? builtinTypes.uint : builtinTypes.int,
         errors: [],
       };
     case "float":
-      return { type: builtinType("float"), errors: [] };
+      return { type: builtinTypes.float, errors: [] };
     case "bool":
-      return { type: builtinType("bool"), errors: [] };
+      return { type: builtinTypes.bool, errors: [] };
     case "function-call":
       const fnName = getFunctionCallName(expr.data);
       const paramTypes = expr.data.args.map((a) => getExprType(a, scopeChain));
-      const paramErrors = paramTypes.flatMap((p) => p.errors);
+      const paramErrors: TypeError = paramTypes.flatMap((p) => p.errors);
       const fn = scopeFind(scopeChain, fnName);
       const fexpr = expr as ASTNode<FunctionCallExpr>;
       if (!fn)
@@ -794,20 +802,46 @@ export function getExprType(
       ) {
         const arrayType = expr.data.identifier.specifier.data.arrayType;
 
-        const fullArrayType: FullySpecifiedType = {
+        const fst: FullySpecifiedType = {
           specifier: dummyNode<TypeSpecifier>({
             type: "type-specifier",
             specifier: expr.data.identifier.specifier,
           }),
         };
+        const fullArrayType: TypeResult = convertType(
+          fst,
+          scopeChain,
+          arrayType.type === "dynamic"
+            ? {
+                type: "num",
+                size: expr.data.args.length,
+              }
+            : undefined
+        );
 
-        const parameterWrongTypeErrors = paramErrors.flatMap((e, i) =>
+        if (!fullArrayType.type || fullArrayType.type.type !== "array")
+          return fullArrayType;
+
+        const elemtype = fullArrayType.type.elementType;
+
+        if (fullArrayType.type.size !== paramTypes.length) {
+          paramErrors.push(
+            ...nodeTypeErr(
+              expr,
+              `
+            Array constructor for type '${stringifyType(fullArrayType.type)}' requires exactly ${fullArrayType.type.size} arguments, but ${paramTypes.length} were provided.
+            `
+            )
+          );
+        }
+
+        const parameterWrongTypeErrors = paramTypes.flatMap((e, i) =>
           paramTypes[i].type
-            ? isSameType(paramTypes[i].type, unarrayType(fullArrayType))
+            ? isSameType(paramTypes[i].type, elemtype)
               ? []
               : nodeTypeErr(
                   fexpr.data.args[i],
-                  `Argument of type '${stringifyType(paramTypes[i].type)}' is not assignable to type '${stringifyType(unarrayType(fullArrayType))}'.`
+                  `Argument of type '${stringifyType(paramTypes[i].type)}' is not assignable to type '${stringifyType(elemtype)}'.`
                 )
             : []
         );
@@ -815,47 +849,52 @@ export function getExprType(
         // TODO: properly handle sized arrays
         if (arrayType.type === "static") {
           return {
-            type: fullArrayType,
+            type: fullArrayType.type,
             errors: paramErrors.concat(
               parameterWrongTypeErrors.concat(paramErrors)
             ),
           };
         } else {
           return {
-            type: fullArrayType,
+            type: fullArrayType.type,
             errors: paramErrors.concat(
               parameterWrongTypeErrors.concat(paramErrors)
             ),
           };
         }
       } else {
-        if (Array.isArray(fn.signatures)) {
-          for (const sig of fn.signatures) {
+        if (fn.signatures.type === "list") {
+          for (const sig of fn.signatures.list) {
             const params = sig.data.prototype.data.parameters?.data ?? [];
             if (paramTypes.length !== params.length) continue;
             let matches = true;
             for (let i = 0; i < params.length; i++) {
               const suppliedType = paramTypes[i];
+              const paramType = convertType(
+                getFunctionParamType(params[i].data),
+                scopeChain
+              );
               if (
                 suppliedType.type &&
-                !isSameType(
-                  suppliedType.type,
-                  getFunctionParamType(params[i].data)
-                )
+                !isSameType(suppliedType.type, paramType.type)
               ) {
                 matches = false;
               }
             }
 
             if (matches) {
+              const converted = convertType(
+                sig.data.prototype.data.fullySpecifiedType.data,
+                scopeChain
+              );
               return {
-                type: sig.data.prototype.data.fullySpecifiedType.data,
-                errors: paramErrors,
+                type: converted.type,
+                errors: paramErrors.concat(converted.errors),
               };
             }
           }
         } else {
-          const retType = fn.signatures(
+          const retType = fn.signatures.typesig(
             fexpr,
             paramTypes.map((t, i) => ({
               expr: fexpr.data.args[i],
@@ -890,10 +929,7 @@ export function getExprType(
           ),
         };
       }
-      return {
-        type: defn.dataType.data,
-        errors: [],
-      };
+      return convertType(defn.dataType.data, scopeChain);
     case "binary-op":
       const bexpr = expr as ASTNode<BinaryOpExpr>;
       switch (expr.data.op) {
@@ -970,8 +1006,8 @@ export function getExprType(
               errors: errors.concat(
                 nodeTypeErr(
                   expr,
-                  `Expression '${fmt.exprmax(expr.data.left)}' is of type '${fmt.fullySpecifiedType(
-                    dummyNode(typeLeft.type!)
+                  `Expression '${fmt.exprmax(expr.data.left)}' is of type '${stringifyType(
+                    typeLeft.type!
                   )}'`
                 )
               ),
@@ -992,10 +1028,7 @@ export function getExprType(
       );
 
       if (condType.type) {
-        const isConditionBoolean = isSameType(
-          condType.type,
-          builtinType("bool")
-        );
+        const isConditionBoolean = isSameType(condType.type, builtinTypes.bool);
         if (!isConditionBoolean) {
           errors = errors.concat(
             nodeTypeErr(
@@ -1046,7 +1079,7 @@ export function getExprType(
       switch (expr.data.op) {
         case "++":
         case "--":
-          if (!isNumberOrNumberVector(operandType.type)) {
+          if (!isNumericalVector(operandType.type)) {
             return {
               errors: operandType.errors.concat(
                 nodeTypeErr(
@@ -1063,7 +1096,7 @@ export function getExprType(
           };
         case "!": {
           let errors = operandType.errors.concat();
-          if (!isSameType(operandType.type, builtinType("boolean"))) {
+          if (!isSameType(operandType.type, builtinTypes.bool)) {
             errors = errors.concat(
               nodeTypeErr(
                 expr,
@@ -1073,12 +1106,12 @@ export function getExprType(
           }
           return {
             errors: operandType.errors,
-            type: builtinType("boolean"),
+            type: builtinTypes.bool,
           };
         }
         case "~":
           let errors = operandType.errors.concat();
-          if (!isIntOrIntVector(operandType.type)) {
+          if (!isIntegralVector(operandType.type)) {
             errors = errors.concat(
               nodeTypeErr(
                 expr,
@@ -1088,7 +1121,7 @@ export function getExprType(
           }
           return {
             errors: operandType.errors,
-            type: builtinType("boolean"),
+            type: builtinTypes.bool,
           };
       }
     case "field-access": {
@@ -1101,10 +1134,10 @@ export function getExprType(
         };
       }
 
-      const baseType = getTypePrimitiveCategory(operandType.type);
+      const baseType = getPType(operandType.type);
 
       if (baseType) {
-        const arity = getTypePrimitiveArity(operandType.type)!;
+        const arity = getArity(operandType.type)!;
 
         if (arity === 1) {
           errors = errors.concat(
@@ -1134,14 +1167,18 @@ export function getExprType(
           const fieldname = expr.data.right.variable.data;
           const swizzleMatch = fieldname.match(allowedSwizzles)?.[0];
           if (swizzleMatch && swizzleMatch.length === fieldname.length) {
-            const retType = getPrimitiveFromTypeAndArity(
-              baseType,
-              swizzleMatch.length as 1 | 2 | 3 | 4
-            );
+            // const retType = getPrimitiveFromTypeAndArity(
+            //   baseType,
+            //   swizzleMatch.length as 1 | 2 | 3 | 4
+            // );
 
             return {
               errors,
-              type: retType,
+              type: {
+                type: "primitive",
+                ptype: baseType,
+                arity: swizzleMatch.length as Arity,
+              },
             };
           } else {
             errors = errors.concat(

@@ -27,14 +27,24 @@ import {
   getFunctionParamType,
   getFunctionParamTypeNode,
   isIntOrIntVector,
+} from "./typecheck";
+import { glslBuiltinScope } from "./builtins";
+import { Result } from "../../utils/result";
+import {
+  evaluateExpression,
+  evaluateTranslationUnit,
+  GLSLValue,
+  StackFrame,
+} from "./evaluator";
+import {
+  convertType,
+  GLSLType,
+  isIntegralVector,
   isSameType,
   isScalar,
   stringifyType,
   TypeResult,
-} from "./typecheck";
-import { glslBuiltinScope } from "./builtins";
-import { Result } from "../../utils/result";
-import { evaluateTranslationUnit, StackFrame } from "./evaluator";
+} from "./glsltype";
 
 export type GLSLAutocompleteOption = {
   str: string;
@@ -50,14 +60,21 @@ export type ScopeItem =
   | {
       type: "function";
       signatures:
-        | Commented<ExternalDeclarationFunction>[]
-        | ((
-            fncall: ASTNode<FunctionCallExpr>,
-            params: {
-              expr: ASTNode<Expr>;
-              type: FullySpecifiedType | undefined;
-            }[]
-          ) => TypeResult);
+        | {
+            type: "list";
+            list: Commented<ExternalDeclarationFunction>[];
+          }
+        | {
+            type: "function";
+            typesig: (
+              fncall: ASTNode<FunctionCallExpr>,
+              params: {
+                expr: ASTNode<Expr>;
+                type: GLSLType | undefined;
+              }[]
+            ) => TypeResult;
+            evaluate: (params: GLSLValue[]) => GLSLValue;
+          };
     };
 
 export type Scope = {
@@ -232,12 +249,15 @@ async function generateGlobalScope(
     // function definitions
     if (ed.data.type === "function") {
       const fn = items.get(ed.data.prototype.data.name.data);
-      if (fn && fn.type === "function" && Array.isArray(fn.signatures)) {
-        fn.signatures.push(ed as ASTNode<ExternalDeclarationFunction>);
+      if (fn && fn.type === "function" && fn.signatures.type === "list") {
+        fn.signatures.list.push(ed as ASTNode<ExternalDeclarationFunction>);
       } else {
         items.set(ed.data.prototype.data.name.data, {
           type: "function",
-          signatures: [ed as ASTNode<ExternalDeclarationFunction>],
+          signatures: {
+            type: "list",
+            list: [ed as ASTNode<ExternalDeclarationFunction>],
+          },
         });
       }
 
@@ -520,7 +540,7 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
                 const sizeType = getExprType(d.data.variant.data.size, scopes);
                 if (
                   sizeType.type &&
-                  (!isIntOrIntVector(sizeType.type) || !isScalar(sizeType.type))
+                  (!isIntegralVector(sizeType.type) || !isScalar(sizeType.type))
                 ) {
                   diagnostics.push({
                     start: decl.range.start,
@@ -531,12 +551,92 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
               } else if (d.data.variant) {
                 const init = d.data.variant?.data.initializer;
                 const initType = getExprType(init, scopes);
+                const convertedType = convertType(decltype, scopes);
 
-                if (initType.type && !isSameType(decltype, initType.type)) {
+                const isArray =
+                  d.data.variant.data.type === "initialized-array";
+
+                if (!convertedType.type) {
                   diagnostics.push({
                     start: decl.range.start,
                     end: decl.range.end,
-                    why: `Cannot assign object of type '${stringifyType(initType.type)}' to variable of type '${stringifyType(decltype)}'.`,
+                    why: "Could not resolve declaration type.",
+                  });
+                  continue;
+                }
+
+                let arrayified = convertedType.type;
+
+                if (d.data.variant.data.type === "initialized-array") {
+                  if (d.data.variant.data.size) {
+                    const sizeType = getExprType(
+                      d.data.variant.data.size,
+                      scopes
+                    );
+                    if (sizeType.type) {
+                      if (
+                        !isIntegralVector(sizeType.type) ||
+                        !isScalar(sizeType.type)
+                      ) {
+                        diagnostics.push({
+                          start: decl.range.start,
+                          end: decl.range.end,
+                          why: `Array size must be an integer, but an expression of type '${stringifyType(sizeType.type)}' was received.`,
+                        });
+                      }
+                    } else {
+                      diagnostics.push(...sizeType.errors);
+                    }
+
+                    const sizeValue = evaluateExpression(
+                      d.data.variant.data.size,
+                      [
+                        {
+                          correspondingScopes: scopes,
+                          values: new Map(),
+                        },
+                      ]
+                    );
+
+                    if (
+                      sizeValue.type !== "vector" ||
+                      !["int", "uint"].includes(sizeValue.vectorType) ||
+                      sizeValue.size !== 1
+                    ) {
+                      diagnostics.push({
+                        start: decl.range.start,
+                        end: decl.range.end,
+                        why: `Runtime Error: Array size is not an integer.`,
+                      });
+                    } else {
+                      arrayified = {
+                        type: "array",
+                        elementType: arrayified,
+                        size: sizeValue.value[0],
+                      };
+                    }
+                  } else if (initType.type?.type !== "array") {
+                    if (initType.type)
+                      diagnostics.push({
+                        start: decl.range.start,
+                        end: decl.range.end,
+                        why: `Cannot assign object of type '${stringifyType(initType.type)}' to variable of type '${stringifyType(convertedType.type)}'.`,
+                      });
+                    continue;
+                  } else {
+                    arrayified = {
+                      type: "array",
+                      elementType: arrayified,
+                      size: initType.type.size,
+                    };
+                  }
+                }
+
+                if (initType.type && !isSameType(arrayified, initType.type)) {
+                  diagnostics.push({
+                    start: decl.range.start,
+                    end: decl.range.end,
+                    why: `Cannot assign object of type '${stringifyType(initType.type)}' to variable of type '${stringifyType(convertedType.type)}'.`,
                   });
                 }
               }

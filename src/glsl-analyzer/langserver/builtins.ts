@@ -1,3 +1,4 @@
+import { typeNameToGLPrimitive } from "../../components/iframe-runtime/GLMessageProtocol";
 import {
   ASTNode,
   Commented,
@@ -11,16 +12,23 @@ import {
   ParameterDeclaration,
 } from "../parser";
 import { lexGLSL, tryParseGLSLRaw } from "../parser-combined";
+import { constructVectorValue, GLSLValue } from "./evaluator";
 import { Scope, ScopeItem } from "./glsl-language-server";
 import {
+  builtinTypes,
+  getArity,
+  GLSLType,
+  stringifyType,
+  TypeResult,
+} from "./glsltype";
+import {
   builtinType,
+  getPrimitiveStringFromTypeAndArity,
   getTypePrimitiveArity,
   getTypePrimitiveCategory,
   isArrayType,
   nodeTypeErr,
-  stringifyType,
   TypeError,
-  TypeResult,
 } from "./typecheck";
 
 function functionHeader(
@@ -66,14 +74,14 @@ function genericVectorConstructor(
 ) {
   return (
     fncall: ASTNode<FunctionCallExpr>,
-    types: { type: FullySpecifiedType | undefined; expr: ASTNode<Expr> }[]
+    types: { type: GLSLType | undefined; expr: ASTNode<Expr> }[]
   ): TypeResult => {
     let slots = 0;
     let errors: TypeError = [];
     let slotsUnknown = false;
     for (const t of types) {
-      const arity = getTypePrimitiveArity(t.type);
-      if (t.type && (!arity || isArrayType(t.type))) {
+      const arity = getArity(t.type);
+      if (t.type && (!arity || t.type.type !== "primitive")) {
         slotsUnknown = true;
         errors = errors.concat(
           nodeTypeErr(
@@ -93,28 +101,68 @@ function genericVectorConstructor(
       );
     }
     return {
-      type: builtinType(retType),
+      type: (builtinTypes as Record<string, GLSLType>)[retType],
       errors,
     };
   };
 }
 
+function genericVectorEvaluator(
+  name: "int" | "float" | "uint" | "bool",
+  arity: 1 | 2 | 3 | 4
+) {
+  return (params: GLSLValue[]): GLSLValue => {
+    const result = params.reduce(
+      (prev, curr) => {
+        if (!prev) return undefined;
+        if (curr.type !== "vector") return undefined;
+        return [...prev, ...curr.value];
+      },
+      [] as number[] | undefined
+    );
+
+    if (result) {
+      if (result.length === 1) {
+        return constructVectorValue(
+          name,
+          arity,
+          false,
+          new Array(arity).fill(result[0])
+        );
+      } else {
+        return constructVectorValue(name, arity, false, result);
+      }
+    } else {
+      return { type: "error" };
+    }
+  };
+}
+
 for (let arity = 2; arity <= 4; arity++) {
-  for (const vec of ["vec", "ivec", "uvec", "bvec"]) {
-    glslBuiltinsMap.set(`${vec}${arity}`, {
+  for (const vec of ["float", "int", "uint", "bool"] as const) {
+    const typeName = getPrimitiveStringFromTypeAndArity(
+      vec,
+      arity as 2 | 3 | 4
+    );
+    glslBuiltinsMap.set(typeName, {
       type: "function",
-      signatures: genericVectorConstructor(
-        `${vec}${arity}`,
-        arity as 2 | 3 | 4
-      ),
+      signatures: {
+        type: "function",
+        typesig: genericVectorConstructor(typeName, arity as 2 | 3 | 4),
+        evaluate: genericVectorEvaluator(vec, arity as 2 | 3 | 4),
+      },
     });
   }
 }
 
-for (const type of ["int", "uint", "float", "bool"]) {
+for (const type of ["int", "uint", "float", "bool"] as const) {
   glslBuiltinsMap.set(type, {
     type: "function",
-    signatures: genericVectorConstructor(type, 1),
+    signatures: {
+      type: "function",
+      typesig: genericVectorConstructor(type, 1),
+      evaluate: genericVectorEvaluator(type, 1),
+    },
   });
 }
 

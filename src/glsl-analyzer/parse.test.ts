@@ -210,6 +210,11 @@ roundtripExpr("a().b.c()", "a().b.c()");
 roundtripExpr("a.b()", "a.b()");
 roundtripExpr("a().b()", "a().b()");
 roundtripExpr("a.b(x)", "a.b(x)");
+roundtripExpr("float[](1.0)[1]", "float[](1.0)[1]");
+roundtripExpr("(a)[1]", "a[1]");
+roundtripExpr("a[1]++", "a[1]++");
+roundtripExpr("a++[1]", "a++[1]");
+roundtripExpr("a[1].x", "a[1].x");
 
 roundtripDecl("precision highp float;", "precision highp float;");
 roundtripDecl("float x;", "float x;");

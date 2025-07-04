@@ -507,7 +507,7 @@ export type SingleDeclarationStart =
     };
 
 export type FullySpecifiedType = {
-  specifier: Commented<TypeSpecifier>;
+  specifier: ASTNode<TypeSpecifier>;
   qualifier?: Commented<TypeQualifier>;
 };
 
@@ -518,7 +518,7 @@ export type ParameterQualifier = "in" | "out" | "inout";
 export type ParameterTypeSpecifier = TypeSpecifier;
 
 export type ParameterDeclarator = {
-  typeSpecifier: Commented<TypeSpecifier>;
+  typeSpecifier: ASTNode<TypeSpecifier>;
   identifier: Commented<string>;
   arraySize?: ASTNode<Expr>;
 };
@@ -539,7 +539,7 @@ export type ParameterDeclaration = {
       }
     | {
         type: "specifier";
-        specifier: Commented<ParameterTypeSpecifier>;
+        specifier: ASTNode<ParameterTypeSpecifier>;
       };
 };
 
@@ -674,7 +674,7 @@ const parameter_type_qualifier = rule<
 >();
 const type_qualifier = rule<TokenKind, Commented<TypeQualifier>>();
 const storage_qualifier = rule<TokenKind, Commented<StorageQualifier>>();
-const type_specifier = rule<TokenKind, Commented<TypeSpecifier>>();
+const type_specifier = rule<TokenKind, ASTNode<TypeSpecifier>>();
 const type_specifier_no_prec = rule<TokenKind, Commented<TypeNoPrec>>();
 const type_specifier_nonarray = rule<
   TokenKind,
@@ -1562,15 +1562,17 @@ storage_qualifier.setPattern(
 );
 
 type_specifier.setPattern(
-  commentify(
-    seq(opt_sc(precision_qualifier), type_specifier_no_prec),
-    ([precision, specifier]) =>
-      ({
-        type: "type-specifier",
-        specifier,
-        precision,
-      }) as TypeSpecifier,
-    (s) => []
+  nodeify_commented(
+    commentify(
+      seq(opt_sc(precision_qualifier), type_specifier_no_prec),
+      ([precision, specifier]) =>
+        ({
+          type: "type-specifier",
+          specifier,
+          precision,
+        }) as TypeSpecifier,
+      (s) => []
+    )
   )
 );
 
