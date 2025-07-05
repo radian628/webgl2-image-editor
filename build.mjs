@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { copy } from "esbuild-plugin-copy";
 import * as ts from "typescript";
+import { buildParserFile } from "@lezer/generator";
 
 // plugin for the ?raw query param
 // to make "raw" resources use the text loader
@@ -59,7 +60,6 @@ const rawDtsQueryParamPlugin = {
 };
 
 async function buildVFSTree(link) {
-  console.log(link);
   const isDir = (await fs.lstat(link)).isDirectory();
   if (isDir) {
     const contents = await Promise.all(
@@ -92,12 +92,33 @@ const vfsBuilderPlugin = {
       };
     });
     build.onLoad({ filter: /.*/, namespace: "vfs-ns" }, async (args) => {
-      console.log(args);
       const outstr =
         `export default ` + (await buildVFSTree(args.path.slice(0, -4)));
-      console.log(outstr);
       return {
         contents: outstr,
+        loader: "ts",
+      };
+    });
+  },
+};
+
+const lezerPlugin = {
+  name: "lezer",
+  setup(build) {
+    build.onResolve({ filter: /.*\.lezer/ }, (args) => {
+      return {
+        path: path.join(args.resolveDir, args.path),
+        namespace: "lezer-ns",
+      };
+    });
+    build.onLoad({ filter: /.*/, namespace: "lezer-ns" }, async (args) => {
+      const src = (await fs.readFile(args.path)).toString();
+      const files = buildParserFile(src, {
+        typeScript: true,
+        moduleStyle: "es",
+      });
+      return {
+        contents: files.parser,
         loader: "ts",
       };
     });
@@ -114,6 +135,7 @@ const ctx = await esbuild.context({
   minify: true,
   sourcemap: true,
   plugins: [
+    lezerPlugin,
     rawQueryParamPlugin,
     rawDtsQueryParamPlugin,
     vfsBuilderPlugin,

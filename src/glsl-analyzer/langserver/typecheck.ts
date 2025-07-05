@@ -248,6 +248,13 @@ export function getFunctionParamType(
     return { specifier: param.declaratorOrSpecifier.specifier };
   }
 }
+export function getFunctionParamName(
+  param: ParameterDeclaration
+): string | undefined {
+  if (param.declaratorOrSpecifier.type === "declarator") {
+    return param.declaratorOrSpecifier.declarator.data.identifier.data;
+  }
+}
 
 export function getFunctionParamTypeNode(
   param: ASTNode<ParameterDeclaration>
@@ -865,7 +872,7 @@ export function getExprType(
       } else {
         if (fn.signatures.type === "list") {
           for (const sig of fn.signatures.list) {
-            const params = sig.data.prototype.data.parameters?.data ?? [];
+            const params = sig.fndef.data.prototype.data.parameters?.data ?? [];
             if (paramTypes.length !== params.length) continue;
             let matches = true;
             for (let i = 0; i < params.length; i++) {
@@ -884,7 +891,7 @@ export function getExprType(
 
             if (matches) {
               const converted = convertType(
-                sig.data.prototype.data.fullySpecifiedType.data,
+                sig.fndef.data.prototype.data.fullySpecifiedType.data,
                 scopeChain
               );
               return {

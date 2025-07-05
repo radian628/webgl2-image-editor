@@ -1,9 +1,11 @@
+import { makeFancyFormatter } from "../formatter/fmt-fancy";
 import {
   ASTNode,
   BinaryOpExpr,
   Commented,
   Declaration,
   Expr,
+  ExternalDeclarationFunction,
   FieldAccessExpr,
   FullySpecifiedType,
   FunctionCallExpr,
@@ -20,6 +22,8 @@ import {
 } from "./glsl-language-server";
 import {
   arrayifyType,
+  getFunctionParamName,
+  getFunctionParamType,
   getPrimitiveFromTypeAndArity,
   getPrimitiveStringFromTypeAndArity,
   getTypePrimitiveArity,
@@ -144,6 +148,8 @@ export type StackFrame = {
       }
     | undefined
   >;
+  returnValue?: GLSLValue;
+  isFunctionRoot?: boolean;
 };
 
 function stackFind(
@@ -255,7 +261,7 @@ export function isLValue(expr: ASTNode<Expr>, scopeChain: Scope[]): boolean {
         isLValue(expr.data.ifFalse, scopeChain)
       );
     case "binary-op":
-      return expr.data.op === "[]";
+      return expr.data.op === "[]" && isLValue(expr.data.left, scopeChain);
   }
   return false;
 }
@@ -600,7 +606,8 @@ export function evaluateExpression(
         (ov, nv) => {
           switch (op) {
             case "+=":
-              return add(ov, nv);
+              const res = add(ov, nv);
+              return res;
             case "-=":
               return subtract(ov, nv);
             case "*=":
@@ -634,7 +641,7 @@ export function evaluateExpression(
           stack,
           (ov, nv) => {
             if (ov.type !== "vector") return error;
-            return add(ov, vec(ov.vectorType, 1, false, [1]));
+            return add(ov, vec(ov.vectorType, 1, false, [offset]));
           },
           error
         );
@@ -643,8 +650,12 @@ export function evaluateExpression(
         case "++":
         case "--":
           const offset = expr.data.op === "++" ? 1 : -1;
-          if (!isLValue(expr, stack.at(-1)!.correspondingScopes)) return error;
-          const prevValue = evalexpr(expr, stack);
+          const isOperandLValue = isLValue(
+            expr.data.left,
+            stack.at(-1)!.correspondingScopes
+          );
+          if (!isOperandLValue) return error;
+          const prevValue = evalexpr(expr.data.left, stack);
           const postValue = incdec(offset);
 
           return uexpr.data.isAfter ? prevValue : postValue;
@@ -664,7 +675,6 @@ export function evaluateExpression(
       }
     }
     case "binary-op":
-      console.log("THIS IS A BINARY OP");
       const bexpr = expr as ASTNode<BinaryOpExpr>;
       const a = evalexpr(expr.data.left, stack);
       const b = evalexpr(expr.data.right, stack);
@@ -717,16 +727,43 @@ export function evaluateExpression(
             !["int", "uint"].includes(b.vectorType)
           )
             return error;
-          console.log("array subscript", a, b);
           return a.value[b.value[0]] ?? error;
       }
     case "field-access": {
       const a = evalexpr(expr.data.left, stack);
 
       if (a.type === "vector") {
-        // TODO: support swizzles
+        if (a.size === 1 || expr.data.right.type === "function") {
+          return error;
+        }
+
+        const swizzles = getSwizzleRegex(a.size);
+        const matchedSwizzle = expr.data.right.variable.data.match(swizzles);
+        if (!matchedSwizzle) {
+          return error;
+        }
+
+        return {
+          type: "vector",
+          vectorType: a.vectorType,
+          size: expr.data.right.variable.data.length as 1 | 2 | 3 | 4,
+          value: expr.data.right.variable.data
+            .split("")
+            .map((c) => a.value[swizzleCharToIndex(c)!]),
+        };
       } else if (a.type === "array") {
-        // TODO: support array length
+        if (
+          expr.data.right.type === "function" &&
+          getFunctionCallName(expr.data.right.function.data) === "length" &&
+          expr.data.right.function.data.args.length === 0
+        ) {
+          return {
+            type: "vector",
+            vectorType: "int",
+            size: 1,
+            value: [a.value.length],
+          };
+        }
       } else if (a.type === "struct") {
         // TODO: support structs
       }
@@ -739,12 +776,77 @@ export function evaluateExpression(
         getFunctionCallName(expr.data as FunctionCallExpr)
       );
       if (fndef?.type !== "function") return error;
-      if (fndef.signatures.type === "function") {
-        return fndef.signatures.evaluate(
-          expr.data.args.map((arg) => evalexpr(arg, stack))
-        );
+      if (
+        expr.data.identifier.type === "type-specifier" &&
+        expr.data.identifier.specifier.data.arrayType.type !== "none"
+      ) {
+        const args = expr.data.args.map((arg) => evalexpr(arg, stack));
+        return {
+          type: "array",
+          value: args,
+        };
       } else {
-        return error;
+        if (fndef.signatures.type === "function") {
+          return fndef.signatures.evaluate(
+            expr.data.args.map((arg) => evalexpr(arg, stack))
+          );
+        } else {
+          // TODO: handle explicit function overloads
+          const args = expr.data.args.map((arg) => evalexpr(arg, stack));
+
+          for (const ol of fndef.signatures.list) {
+            if (
+              (ol.fndef.data.prototype.data.parameters?.data.length ?? 0) !=
+              args.length
+            )
+              continue;
+
+            let matches = true;
+            for (let i = 0; i < expr.data.args.length; i++) {
+              const arg = args[i];
+              const argtype =
+                ol.fndef.data.prototype.data.parameters!.data[i].data;
+              if (!doesValueMatchType(arg, getFunctionParamType(argtype))) {
+                matches = false;
+              }
+            }
+
+            if (matches) {
+              const stackframe: StackFrame = {
+                correspondingScopes: [
+                  ...stack.at(-1)!.correspondingScopes,
+                  fndef.globalScope,
+                ],
+                isFunctionRoot: true,
+                values: new Map(),
+              };
+              for (let i = 0; i < expr.data.args.length; i++) {
+                const arg = args[i];
+                const argname = getFunctionParamName(
+                  ol.fndef.data.prototype.data.parameters!.data[i].data
+                );
+                if (!argname) return error;
+                stackframe.values.set(argname, {
+                  value: arg,
+                  type: getFunctionParamType(
+                    ol.fndef.data.prototype.data.parameters!.data[i].data
+                  ),
+                });
+              }
+              const result = evaluateStatement(ol.fndef.data.body, [
+                ...stack,
+                stackframe,
+              ]);
+              if (result.returnValue) {
+                return result.returnValue;
+              } else {
+                return error;
+              }
+            }
+          }
+
+          return error;
+        }
       }
   }
 }
@@ -760,6 +862,8 @@ function stackWithNewFrame(stack: StackFrame[], stmt: ASTNode<any>) {
 
   const stmtScope = lastScope.innerScopeMap.get(stmt);
   if (!stmtScope) {
+    // TODO: find a better way to handle this case (probs just return an error?)
+    console.error(makeFancyFormatter(80, 2).statement(stmt));
     throw new Error(
       "Statement should have a scope!!! This error should never be thrown."
     );
@@ -901,7 +1005,25 @@ export function evaluateStatement(
 
       for (const child of stmt.data.statements) {
         const result = evaluateStatement(child, newstack);
+        if (
+          result.shouldBreak ||
+          result.shouldContinue ||
+          result.shouldReturn
+        ) {
+          if (stack.at(-1)!.isFunctionRoot) {
+            stack.at(-1)!.returnValue = result.returnValue;
+          }
+
+          return {
+            shouldBreak: result.shouldBreak,
+            shouldContinue: result.shouldContinue,
+            shouldReturn: result.shouldReturn,
+            returnValue: result.returnValue,
+          };
+        }
       }
+
+      return {};
     case "continue":
       return {
         shouldContinue: true,
@@ -922,12 +1044,22 @@ export function evaluateStatement(
       ) {
         if (cond.value[0] === 1) {
           const newstack = stackWithNewFrame(stack, stmt);
-          evaluateStatement(stmt.data.rest.data.if, newstack);
-          return {};
+          const result = evaluateStatement(stmt.data.rest.data.if, newstack);
+          return {
+            shouldBreak: result.shouldBreak,
+            shouldContinue: result.shouldContinue,
+            shouldReturn: result.shouldReturn,
+            returnValue: result.returnValue,
+          };
         } else if (stmt.data.rest.data.else) {
-          const newstack = stackWithNewFrame(stack, stmt.data.rest.data.else);
-          evaluateStatement(stmt.data.rest.data.else, newstack);
-          return {};
+          const newstack = stackWithNewFrame(stack, stmt);
+          const result = evaluateStatement(stmt.data.rest.data.else, newstack);
+          return {
+            shouldBreak: result.shouldBreak,
+            shouldContinue: result.shouldContinue,
+            shouldReturn: result.shouldReturn,
+            returnValue: result.returnValue,
+          };
         }
       } else {
         return {};
@@ -946,7 +1078,14 @@ export function evaluateStatement(
       while (loops < 1000000) {
         if (stmt.data.cond.data.type === "expr") {
           if (doWhile) {
-            evaluateStatement(stmt, stackWithNewFrame(stack, stmt));
+            const result = evaluateStatement(
+              stmt.data.body,
+              stackWithNewFrame(stack, stmt)
+            );
+            if (result.shouldBreak) break;
+            if (result.shouldReturn) {
+              return { shouldReturn: true, returnValue: result.returnValue };
+            }
           }
 
           // break out of while loop
@@ -962,7 +1101,14 @@ export function evaluateStatement(
           }
 
           if (!doWhile) {
-            evaluateStatement(stmt, stackWithNewFrame(stack, stmt));
+            const result = evaluateStatement(
+              stmt.data.body,
+              stackWithNewFrame(stack, stmt)
+            );
+            if (result.shouldBreak) break;
+            if (result.shouldReturn) {
+              return { shouldReturn: true, returnValue: result.returnValue };
+            }
           }
         } else {
           // TODO: figure out hwat the hell this option is
@@ -976,7 +1122,7 @@ export function evaluateStatement(
       const newstack = stackWithNewFrame(stack, stmt);
       evaluateStatement(stmt.data.init, newstack);
       while (loops < 1000000) {
-        const newstack2 = stackWithNewFrame(newstack, stmt);
+        const newstack2 = stackWithNewFrame(newstack, stmt.data.init);
         const condition = stmt.data.rest.data.condition;
         if (!condition || condition.data.type === "expr") {
           const cond =
@@ -991,7 +1137,11 @@ export function evaluateStatement(
               cond.vectorType === "bool" &&
               cond.value[0] === 1)
           ) {
-            evaluateStatement(stmt, newstack);
+            const result = evaluateStatement(stmt.data.body, newstack2);
+            if (result.shouldBreak) break;
+            if (result.shouldReturn) {
+              return { shouldReturn: true, returnValue: result.returnValue };
+            }
           } else {
             break;
           }
@@ -999,6 +1149,9 @@ export function evaluateStatement(
           // TODO: figure this out
           break;
         }
+
+        if (stmt.data.rest.data.expr)
+          evalexpr(stmt.data.rest.data.expr, newstack);
 
         loops++;
       }
@@ -1011,13 +1164,21 @@ export function evaluateStatement(
       for (const s of stmt.data.stmts) {
         // TODO: handle break statements
         if (evaluating) {
-          evaluateStatement(s, newstack);
+          const result = evaluateStatement(s, newstack);
+          if (result.shouldBreak) return {};
+          if (result.shouldReturn)
+            return {
+              shouldReturn: true,
+              returnValue: result.returnValue,
+            };
         } else {
           if (s.data.type === "case") {
             const caseExpr = evalexpr(s.data.expr, newstack);
             if (areValuesEqual(expr, caseExpr)) {
               evaluating = true;
             }
+          } else if (s.data.type === "default-case") {
+            evaluating = true;
           }
         }
       }
@@ -1046,7 +1207,7 @@ export function evaluateTranslationUnit(
 
   if (fn && fn.type === "function" && fn.signatures.type === "list") {
     const sig = fn.signatures.list[0];
-    evaluateStatement(fn.signatures.list[0].data.body, [stackFrame]);
+    evaluateStatement(fn.signatures.list[0].fndef.data.body, [stackFrame]);
   }
 
   return stackFrame;

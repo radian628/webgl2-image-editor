@@ -26,6 +26,8 @@ import * as prettierPluginEstree from "prettier/plugins/estree";
 import { JSX } from "react";
 import React from "react";
 
+/// <reference path="../../../../types/global.d.ts" />
+
 function formatTypescriptFragment(str: string) {
   return prettier.format(str, {
     plugins: [prettierPluginTypescript, prettierPluginEstree],

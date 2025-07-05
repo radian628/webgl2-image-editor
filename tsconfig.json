@@ -3,6 +3,8 @@
     "strict": true,
     "jsx": "react",
     "esModuleInterop": true,
-    "downlevelIteration": true
+    "downlevelIteration": true,
+    "lib": ["ESNext", "DOM"],
+    "typeRoots": ["./node_modules/@types", "./types"]
   }
 }

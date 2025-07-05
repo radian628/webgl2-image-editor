@@ -59,10 +59,14 @@ export type ScopeItem =
     }
   | {
       type: "function";
+      globalScope: Scope;
       signatures:
         | {
             type: "list";
-            list: Commented<ExternalDeclarationFunction>[];
+            list: {
+              fndef: Commented<ExternalDeclarationFunction>;
+              scope: Scope;
+            }[];
           }
         | {
             type: "function";
@@ -201,16 +205,19 @@ function generateLocalScope(stmt: ASTNode<Stmt>, filecontents: string): Scope {
   } else if (stmt.data.type === "do-while" || stmt.data.type === "while") {
     const whileScope = generateLocalScope(stmt.data.body, filecontents);
     innerScopes.push(whileScope);
-    innerScopeMap.set(stmt, whileScope);
+    innerScopeMap.set(stmt.data.body, whileScope);
   } else if (stmt.data.type === "for") {
-    addStatementScopeItems(stmt.data.body, items);
+    const forInitScope = generateLocalScope(stmt.data.init, filecontents);
+    addStatementScopeItems(stmt.data.init, items);
+    innerScopes.push(forInitScope);
+    innerScopeMap.set(stmt.data.init, forInitScope);
     const forScope = generateLocalScope(stmt.data.body, filecontents);
-    innerScopes.push(forScope);
-    innerScopeMap.set(stmt, forScope);
+    forInitScope.innerScopes.push(forScope);
+    forInitScope.innerScopeMap.set(stmt.data.body, forScope);
   } else if (stmt.data.type === "selection") {
     const ifScope = generateLocalScope(stmt.data.rest.data.if, filecontents);
     innerScopes.push(ifScope);
-    innerScopeMap.set(stmt, ifScope);
+    innerScopeMap.set(stmt.data.rest.data.if, ifScope);
     if (stmt.data.rest.data.else) {
       const elseScope = generateLocalScope(
         stmt.data.rest.data.else,
@@ -245,18 +252,53 @@ async function generateGlobalScope(
   const items = new Map<string, ScopeItem>();
   const innerScopes: Scope[] = [];
   const innerScopeMap = new Map<any, Scope>();
+  const globalScope: Scope = {
+    items,
+    innerScopes,
+    innerScopeMap,
+    start: ast.range.start,
+    end: ast.range.end ?? filecontents.length,
+  };
+
   for (const ed of ast.data) {
     // function definitions
     if (ed.data.type === "function") {
       const fn = items.get(ed.data.prototype.data.name.data);
+
+      const fnscope = await generateLocalScope(ed.data.body, filecontents);
+      innerScopes.push(fnscope);
+      innerScopeMap.set(ed.data.body, fnscope);
+      for (const param of ed.data.prototype.data.parameters?.data ?? []) {
+        const paramName =
+          param.data.declaratorOrSpecifier.type === "declarator"
+            ? param.data.declaratorOrSpecifier.declarator.data.identifier
+            : undefined;
+        const type = getFunctionParamTypeNode(param);
+        if (!paramName) continue;
+        fnscope.items.set(paramName.data, {
+          type: "variable",
+          name: paramName,
+          dataType: type,
+        });
+      }
+
       if (fn && fn.type === "function" && fn.signatures.type === "list") {
-        fn.signatures.list.push(ed as ASTNode<ExternalDeclarationFunction>);
+        fn.signatures.list.push({
+          fndef: ed as ASTNode<ExternalDeclarationFunction>,
+          scope: fnscope,
+        });
       } else {
         items.set(ed.data.prototype.data.name.data, {
           type: "function",
+          globalScope,
           signatures: {
             type: "list",
-            list: [ed as ASTNode<ExternalDeclarationFunction>],
+            list: [
+              {
+                fndef: ed as ASTNode<ExternalDeclarationFunction>,
+                scope: fnscope,
+              },
+            ],
           },
         });
       }
@@ -287,34 +329,8 @@ async function generateGlobalScope(
         }
       }
     }
-
-    // local scopes
-    if (ed.data.type === "function") {
-      const fnscope = await generateLocalScope(ed.data.body, filecontents);
-      innerScopes.push(fnscope);
-      innerScopeMap.set(ed.data.body, fnscope);
-      for (const param of ed.data.prototype.data.parameters?.data ?? []) {
-        const paramName =
-          param.data.declaratorOrSpecifier.type === "declarator"
-            ? param.data.declaratorOrSpecifier.declarator.data.identifier
-            : undefined;
-        const type = getFunctionParamTypeNode(param);
-        if (!paramName) continue;
-        items.set(paramName.data, {
-          type: "variable",
-          name: paramName,
-          dataType: type,
-        });
-      }
-    }
   }
-  return {
-    items,
-    innerScopes,
-    innerScopeMap,
-    start: ast.range.start,
-    end: ast.range.end ?? filecontents.length,
-  };
+  return globalScope;
 }
 
 export function getFunctionCallName(call: FunctionCallExpr): string {

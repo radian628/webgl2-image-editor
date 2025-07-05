@@ -215,6 +215,7 @@ roundtripExpr("(a)[1]", "a[1]");
 roundtripExpr("a[1]++", "a[1]++");
 roundtripExpr("a++[1]", "a++[1]");
 roundtripExpr("a[1].x", "a[1].x");
+roundtripExpr("a(1)[1]", "a(1)[1]");
 
 roundtripDecl("precision highp float;", "precision highp float;");
 roundtripDecl("float x;", "float x;");

@@ -70,12 +70,16 @@ export namespace FormatGLSLPacked {
         )}`;
       case "binary-op": {
         const prec = c.precedence;
-        const c2 = {
+        let c2 = {
           precedence: binaryPrecedences[e.data.op],
         };
         if (e.data.op == "[]") {
+          c2 = {
+            precedence: c2.precedence,
+          };
           const left = expr(e.data.left, c2);
           const right = expr(e.data.right, { precedence: maxPrecedence });
+          console.log(prec, c2.precedence);
           return `${prec < c2.precedence ? `(${left})` : left}[${right}]`;
         }
 
@@ -87,7 +91,7 @@ export namespace FormatGLSLPacked {
       }
       case "field-access":
         return `${expr(e.data.left, {
-          precedence: minPrecedence,
+          precedence: 20,
         })}.${e.data.right.type === "variable" ? e.data.right.variable.data : exprmax(e.data.right.function)}`;
       case "unary-op": {
         const prec = c.precedence;
@@ -450,6 +454,8 @@ export namespace FormatGLSLPacked {
         return `for(${statement(s.data.init)}${forRestStatement(
           s.data.rest
         )})${statement(s.data.body)}`;
+      case "error":
+        return "###ERROR###";
     }
   }
 

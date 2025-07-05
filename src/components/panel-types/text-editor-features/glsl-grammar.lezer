@@ -1,0 +1,592 @@
+@precedence { 
+  else @left, 
+  if @left,
+  type,
+  variable
+}
+
+VariableIdentifier { Identifier }
+
+PrimaryExpression {
+  VariableIdentifier |
+  IntegerDecimal | IntegerOctal | IntegerHex |
+  Float |
+  "true" | "false" |
+  "(" Expression ")"
+}
+
+PostfixExpression {
+  (FunctionCall | PrimaryExpression)
+    ("[" IntegerExpression "]" | "." Identifier | "++" | "--")*
+}
+
+IntegerExpression {
+  Expression
+}
+
+FunctionCall {
+  FunctionCallOrMethod
+}
+
+FunctionCallOrMethod {
+  FunctionCallGeneric |
+  PostfixExpression "." FunctionCallGeneric
+}
+
+FunctionCallGeneric {
+  FunctionCallHeaderWithParameters ")" |
+  FunctionCallHeaderNoParameters ")"
+}
+
+FunctionCallHeaderNoParameters {
+  FunctionCallHeader "void" |
+  FunctionCallHeader
+}
+
+FunctionCallHeaderWithParameters {
+  FunctionCallHeader AssignmentExpression |
+  FunctionCallHeaderWithParameters "," AssignmentExpression
+}
+
+FunctionCallHeader {
+  FunctionIdentifier "("
+}
+
+FunctionIdentifier {
+  !type TypeSpecifier |
+  !variable Identifier
+}
+
+UnaryExpression {
+  PostfixExpression |
+  "++" UnaryExpression |
+  "--" UnaryExpression |
+  UnaryOperator UnaryExpression
+}
+
+UnaryOperator {
+  "+" | "-" | "!" | "~"
+}
+
+MultiplicativeExpression {
+  UnaryExpression |
+  MultiplicativeExpression ("*" | "/" | "%") UnaryExpression
+}
+
+AdditiveExpression {
+  MultiplicativeExpression |
+  AdditiveExpression ("+" | "-") MultiplicativeExpression 
+}
+
+ShiftExpression {
+  AdditiveExpression |
+  ShiftExpression ("<<" | ">>") AdditiveExpression
+}
+
+RelationalExpression {
+  ShiftExpression |
+  RelationalExpression ("<" | ">" | "<=" | ">=") ShiftExpression
+}
+
+EqualityExpression {
+  RelationalExpression |
+  EqualityExpression ("==" | "!=") RelationalExpression
+}
+
+AndExpression {
+  EqualityExpression |
+  AndExpression "&" EqualityExpression
+}
+
+ExclusiveOrExpression {
+  AndExpression |
+  ExclusiveOrExpression "^" AndExpression 
+}
+
+InclusiveOrExpression {
+  ExclusiveOrExpression |
+  InclusiveOrExpression "|" ExclusiveOrExpression 
+}
+
+LogicalAndExpression {
+  InclusiveOrExpression |
+  LogicalAndExpression "&&" InclusiveOrExpression
+}
+
+LogicalXorExpression {
+  LogicalAndExpression |
+  LogicalXorExpression "^^" LogicalAndExpression
+}
+
+LogicalOrExpression {
+  LogicalXorExpression |
+  LogicalOrExpression "||" LogicalXorExpression
+}
+
+ConditionalExpression {
+  LogicalOrExpression |
+  LogicalOrExpression "?" Expression ":" AssignmentExpression
+}
+
+AssignmentExpression {
+  ConditionalExpression |
+  UnaryExpression AssignmentOperator AssignmentExpression
+}
+
+AssignmentOperator {
+  "=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | ">>=" | "&=" | "^=" | "|="
+}
+
+Expression {
+  AssignmentExpression |
+  Expression "," AssignmentExpression
+}
+
+ConstantExpression {
+  ConditionalExpression
+}
+
+Declaration {
+  FunctionPrototype ";" |
+  InitDeclaratorList ";" |
+  "precision" PrecisionQualifier TypeSpecifierNoPrec ";" |
+  TypeQualifier Identifier "{" StructDeclarationList "}" (Identifier ("[" ConstantExpression "]")?)? ";" |
+  TypeQualifier ";" 
+}
+
+FunctionPrototype {
+  FunctionDeclarator "("
+}
+
+FunctionDeclarator {
+  FunctionHeader |
+  FunctionHeaderWithParameters
+}
+
+FunctionHeaderWithParameters {
+  FunctionHeader ParameterDeclaration |
+  FunctionHeaderWithParameters "," ParameterDeclaration
+}
+
+FunctionHeader {
+  FullySpecifiedType Identifier "("
+}
+
+ParameterDeclarator {
+  TypeSpecifier Identifier |
+  TypeSpecifier Identifier "[" ConstantExpression "]"
+}
+
+ParameterDeclaration {
+  ParameterTypeQualifier ParameterQualifier ParameterDeclarator |
+  ParameterQualifier ParameterDeclarator |
+  ParameterTypeQualifier ParameterQualifier ParameterTypeSpecifier |
+  ParameterQualifier ParameterTypeSpecifier
+}
+
+ParameterQualifier {
+  "" | "in" | "out" | "inout"
+}
+
+ParameterTypeSpecifier {
+  TypeSpecifier
+}
+
+SingleDeclHelper {
+  Identifier (
+    "[" ConstantExpression "]" ("=" Initializer)? |
+    "[" "]" "=" Initializer |
+    "=" Initializer |
+    ""
+  )
+}
+
+InitDeclaratorList {
+  SingleDeclaration |
+  InitDeclaratorList "," SingleDeclHelper 
+}
+
+SingleDeclaration {
+  FullySpecifiedType SingleDeclHelper | 
+  "invariant" Identifier
+}
+
+FullySpecifiedType {
+  TypeQualifier? TypeSpecifier
+}
+
+InvariantQualifier {
+  "invariant"
+}
+
+InterpolationQualifier {
+  "smooth" | "flat"
+}
+
+LayoutQualifier {
+  "layout" "(" LayoutQualifierIdList ")"
+}
+
+LayoutQualifierIdList {
+  LayoutQualifierId |
+  LayoutQualifierIdList "," LayoutQualifierId
+}
+
+LayoutQualifierId {
+  Identifier ("=" IntegerDecimal | IntegerHex | IntegerOctal)?
+}
+
+ParameterTypeQualifier {
+  "const"
+}
+
+TypeQualifier {
+  StorageQualifier |
+  LayoutQualifier |
+  LayoutQualifier StorageQualifier |
+  InterpolationQualifier StorageQualifier |
+  InterpolationQualifier |
+  InvariantQualifier StorageQualifier |
+  InvariantQualifier InterpolationQualifier StorageQualifier
+}
+
+StorageQualifier {
+  "const" | "in" | "out" | "centroid" "in" | "centroid" "out" | "uniform"
+}
+
+TypeSpecifier {
+  TypeSpecifierNoPrec |
+  PrecisionQualifier TypeSpecifierNoPrec
+}
+
+TypeSpecifierNoPrec {
+  TypeSpecifierNonarray ("[" ConstantExpression? "]")?
+}
+
+TypeSpecifierNonarray {
+  "void" | "float" | "int" | "uint" | "bool" | 
+    "bvec2" |
+    "bvec3" |
+    "bvec4" |
+    "ivec2" |
+    "ivec3" |
+    "ivec4" |
+    "uvec2" |
+    "uvec3" |
+    "uvec4" |
+    "vec2" |
+    "vec3" |
+    "vec4" |
+    "mat2" |
+    "mat3" |
+    "mat4" |
+    "mat2x2" |
+    "mat2x3" |
+    "mat2x4" |
+    "mat3x2" |
+    "mat3x3" |
+    "mat3x4" |
+    "mat4x2" |
+    "mat4x3" |
+    "mat4x4" |
+    "sampler2d" |
+    "sampler3d" |
+    "samplercube" |
+    "sampler2dshadow" |
+    "samplercubeshadow" |
+    "sampler2darray" |
+    "sampler2darrayshadow" |
+    "isampler2d" |
+    "isampler3d" |
+    "isamplercube" |
+    "isampler2darray" |
+    "usampler2d" |
+    "usampler3d" |
+    "usamplercube" |
+    "usampler2darray" |
+    StructSpecifier |
+    Identifier
+}
+
+PrecisionQualifier {
+  "highp" | "mediump" | "lowp"
+}
+
+StructSpecifier {
+  "struct" Identifier? "{" StructDeclarationList "}" 
+}
+
+StructDeclarationList {
+  StructDeclaration |
+  StructDeclarationList StructDeclaration
+}
+
+StructDeclaration {
+  TypeQualifier? TypeSpecifier StructDeclaratorList ";"
+}
+
+StructDeclaratorList {
+  StructDeclarator |
+  StructDeclaratorList "," StructDeclarator
+}
+
+StructDeclarator {
+  Identifier ("[" ConstantExpression? "]")?
+}
+
+Initializer {
+  AssignmentExpression
+}
+
+DeclarationStatement {
+  Declaration
+}
+
+Statement {
+  CompoundStatementWithScope | SimpleStatement
+}
+
+StatementNoNewScope {
+  CompoundStatementNoNewScope | SimpleStatement
+}
+
+StatementWithScope {
+  CompoundStatementNoNewScope | SimpleStatement
+}
+
+SimpleStatement {
+  DeclarationStatement |
+  ExpressionStatement |
+  SelectionStatement |
+  SwitchStatement |
+  CaseLabel |
+  IterationStatement |
+  JumpStatement
+}
+
+CompoundStatementWithScope {
+  "{" StatementList "}"
+}
+
+CompoundStatementNoNewScope {
+  CompoundStatementWithScope
+}
+
+StatementList {
+  Statement |
+  StatementList Statement
+}
+
+ExpressionStatement {
+  Expression? ";"
+}
+
+
+SelectionStatement {
+  !if "if" "(" Expression ")" SelectionRestStatement
+}
+
+SelectionRestStatement {
+  !else StatementWithScope ("else" StatementWithScope)?
+}
+
+Condition {
+  Expression |
+  FullySpecifiedType Identifier "=" Initializer
+}
+
+SwitchStatement {
+  "switch" "(" Expression ")" "{" SwitchStatementList "}" 
+}
+
+SwitchStatementList {
+  StatementList?
+}
+
+CaseLabel {
+  "case" Expression ":" |
+  "default" ":"
+}
+
+IterationStatement {
+  "while" "(" Condition ")" StatementNoNewScope |
+  "do" StatementWithScope "while" "(" Expression ")" ";" |
+  "for" "(" ForInitStatement ForRestStatement ")" StatementNoNewScope
+}
+
+ForInitStatement {
+  ExpressionStatement | DeclarationStatement
+}
+
+Conditionopt {
+  Condition?
+}
+
+ForRestStatement {
+  Conditionopt ";" Expression?
+}
+
+JumpStatement {
+  ("continue" | "break" | "return" Expression? | "discard") ";"
+}
+
+TranslationUnit {
+  ExternalDeclaration+
+}
+
+ExternalDeclaration {
+  FunctionDefinition | Declaration
+}
+
+FunctionDefinition {
+  FunctionPrototype CompoundStatementNoNewScope
+}
+
+@top Program {
+  TranslationUnit
+}
+
+@skip {
+  Space | Comment
+}
+
+@tokens {
+  Space { @whitespace+ }
+  Comment { "//" ![\n]* | "/*" ![]* "*/" }
+  Identifier { $[a-zA-Z_] $[a-zA-Z0-9_]* }
+  IntegerDecimal { $[1-9] $[0-9]* $[uU]? }
+  IntegerOctal { "0" $[0-7]* $[uU]? }
+  IntegerHex { "0" $[xX] $[0-9a-fA-F]+ $[uU]? }
+  Float { 
+    ($[0-9]+ "." $[0-9]*) 
+    | ("." $[0-9]+) ($[eE] $[\+\-]? $[0-9]+)? $[fF]? 
+    | ($[0-9]+ $[eE] $[\+\-] $[0-9]+ $[fF]?)
+  }
+  ImportString { "\"" !["]* "\"" }
+  Symbol {
+    "*=" |
+    "/=" |
+    "%=" |
+    "+=" |
+    "-=" |
+    "<<=" |
+    ">>=" |
+    "&=" |
+    "^=" |
+    "|=" |
+    "++" |
+    "--" |
+    "==" |
+    "!=" |
+    ">=" |
+    "<=" |
+    "&&" |
+    "||" |
+    "^^" |
+    "<<" |
+    ">>" |
+    "(" |
+    ")" |
+    "[" |
+    "]" |
+    "{" |
+    "}" |
+    "." |
+    "," |
+    ":" |
+    "=" |
+    ";" |
+    "!" |
+    "-" |
+    "~" |
+    "+" |
+    "*" |
+    "/" |
+    "%" |
+    "<" |
+    ">" |
+    "|" |
+    "^" |
+    "&" |
+    "?"
+  }
+  Keyword {
+    "const" |
+    "bool" |
+    "float" |
+    "int" |
+    "uint" |
+    "break" |
+    "continue" |
+    "do" |
+    "else" |
+    "for" |
+    "if" |
+    "discard" |
+    "return" |
+    "switch" |
+    "case" |
+    "default" |
+    "bvec2" |
+    "bvec3" |
+    "bvec4" |
+    "ivec2" |
+    "ivec3" |
+    "ivec4" |
+    "uvec2" |
+    "uvec3" |
+    "uvec4" |
+    "vec2" |
+    "vec3" |
+    "vec4" |
+    "mat2" |
+    "mat3" |
+    "mat4" |
+    "centroid" |
+    "in" |
+    "out" |
+    "inout" |
+    "uniform" |
+    "flat" |
+    "smooth" |
+    "layout" |
+    "mat2x2" |
+    "mat2x3" |
+    "mat2x4" |
+    "mat3x2" |
+    "mat3x3" |
+    "mat3x4" |
+    "mat4x2" |
+    "mat4x3" |
+    "mat4x4" |
+    "sampler2d" |
+    "sampler3d" |
+    "samplercube" |
+    "sampler2dshadow" |
+    "samplercubeshadow" |
+    "sampler2darray" |
+    "sampler2darrayshadow" |
+    "isampler2d" |
+    "isampler3d" |
+    "isamplercube" |
+    "isampler2darray" |
+    "usampler2d" |
+    "usampler3d" |
+    "usamplercube" |
+    "usampler2darray" |
+    "struct" |
+    "void" |
+    "while" |
+    "invariant" |
+    "highp" |
+    "mediump" |
+    "lowp" |
+    "true" |
+    "false" |
+    "shared" |
+    "packed" |
+    "std140" |
+    "row_major" |
+    "column_major"
+  }
+}

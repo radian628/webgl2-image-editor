@@ -796,85 +796,174 @@ primary_expression.setPattern(
   )
 );
 
-const field_access: Parser<TokenKind, ASTNode<Expr>> =
-  // a.b
-  binop_generic(
-    alt_sc(function_call_generic, failOnErrExpr(primary_expression)),
-    apply(
-      seq(
-        comment_parser,
-        str("."),
-        comment_parser,
-        alt_sc(
-          apply(function_call_generic, (f) => ({
-            type: "function" as "function",
-            function: f,
-          })),
-          apply(
-            with_comment_before(
-              apply(tok(TokenKind.Identifier), (t) => t.text)
-            ),
-            (t) => ({
-              type: "variable" as "variable",
-              variable: t,
-            })
-          )
-        )
-      ),
-      (s) => s[3]
-    ),
-    (left: ASTNode<Expr>, right) => [
-      {
-        type: "field-access",
-        left,
-        right: right,
-        _isExpr: true,
-      },
-      [],
-    ]
-  );
+// const field_access: Parser<TokenKind, ASTNode<Expr>> =
+//   // a.b
+//   binop_generic(
+//     alt_sc(function_call_generic, failOnErrExpr(primary_expression)),
+//     apply(
+//       seq(
+//         comment_parser,
+//         str("."),
+//         comment_parser,
+//         alt_sc(
+//           apply(function_call_generic, (f) => ({
+//             type: "function" as "function",
+//             function: f,
+//           })),
+//           apply(
+//             with_comment_before(
+//               apply(tok(TokenKind.Identifier), (t) => t.text)
+//             ),
+//             (t) => ({
+//               type: "variable" as "variable",
+//               variable: t,
+//             })
+//           )
+//         )
+//       ),
+//       (s) => s[3]
+//     ),
+//     (left: ASTNode<Expr>, right) => [
+//       {
+//         type: "field-access",
+//         left,
+//         right: right,
+//         _isExpr: true,
+//       },
+//       [],
+//     ]
+//   );
+
+// postfix_expression.setPattern(
+//   alt_sc(
+//     // a[b]
+//     binop_generic(
+//       failOnErrExpr(primary_expression),
+//       seq(
+//         comment_parser,
+//         str("["),
+//         integer_expression,
+//         comment_parser,
+//         str("]")
+//       ),
+//       (left, right) => [
+//         {
+//           left,
+//           right: right[2],
+//           type: "binary-op",
+//           op: "[]",
+//           _isExpr: true,
+//         },
+//         [right[0], right[3]],
+//       ]
+//     ),
+//     // a++, a--
+//     binop_generic(
+//       failOnErrExpr(primary_expression),
+//       seq(comment_parser, alt_sc(str("++"), str("--"))),
+//       (left, right) => [
+//         {
+//           type: "unary-op",
+//           left,
+//           op: right[1].text as "++" | "--",
+//           isAfter: true,
+//           _isExpr: true,
+//         },
+//         [right[0]],
+//       ]
+//     ),
+//     field_access,
+//     function_call_generic,
+//     failOnErrExpr(primary_expression)
+//   )
+// );
 
 postfix_expression.setPattern(
-  alt_sc(
-    // a[b]
-    binop_generic(
-      failOnErrExpr(primary_expression),
-      seq(
-        comment_parser,
-        str("["),
-        integer_expression,
-        comment_parser,
-        str("]")
-      ),
-      (left, right) => [
-        {
-          left,
-          right: right[2],
-          type: "binary-op",
-          op: "[]",
-          _isExpr: true,
-        },
-        [right[0], right[3]],
-      ]
+  lrec_sc(
+    alt_sc(function_call_generic, failOnErrExpr(primary_expression)),
+    nodeify(
+      alt_sc(
+        apply(
+          seq(
+            comment_parser,
+            str("["),
+            integer_expression,
+            comment_parser,
+            str("]")
+          ),
+          (a) => ({ type: "array", data: a }) as const
+        ),
+        apply(
+          seq(comment_parser, alt_sc(str("++"), str("--"))),
+          (a) => ({ type: "incdec", data: a }) as const
+        ),
+        apply(
+          seq(
+            comment_parser,
+            str("."),
+            comment_parser,
+            alt_sc(
+              apply(function_call_generic, (f) => ({
+                type: "function" as "function",
+                function: f,
+              })),
+              apply(
+                with_comment_before(
+                  apply(tok(TokenKind.Identifier), (t) => t.text)
+                ),
+                (t) => ({
+                  type: "variable" as "variable",
+                  variable: t,
+                })
+              )
+            )
+          ),
+          (a) => ({ type: "member", data: a }) as const
+        )
+      )
     ),
-    // a++, a--
-    binop_generic(
-      failOnErrExpr(primary_expression),
-      seq(comment_parser, alt_sc(str("++"), str("--"))),
-      (left, right) => [
-        {
-          type: "unary-op",
-          left,
-          op: right[1].text as "++" | "--",
-          isAfter: true,
-          _isExpr: true,
-        },
-        [right[0]],
-      ]
-    ),
-    field_access,
-    function_call_generic,
-    failOnErrExpr(primary_expression)
+    (a, b): ASTNode<Expr> => {
+      const left = a as ASTNode<Expr>;
+      if (b.data.type === "array") {
+        return {
+          range: b.range,
+          _isNode: true,
+          data: {
+            left,
+            right: b.data.data[2],
+            type: "binary-op",
+            op: "[]",
+            _isExpr: true,
+          },
+          comments: [b.data.data[0], b.data.data[3]],
+        };
+      } else if (b.data.type === "incdec") {
+        return {
+          range: b.range,
+          _isNode: true,
+          data: {
+            left,
+            type: "unary-op",
+            op: b.data.data[1].text as "++" | "--",
+            isAfter: true,
+            _isExpr: true,
+          },
+          comments: [b.data.data[0]],
+        };
+      } else {
+        return {
+          range: b.range,
+          _isNode: true,
+          data: {
+            type: "field-access",
+            left,
+            right: b.data.data[3],
+            _isExpr: true,
+          },
+          comments: [b.data.data[0], b.data.data[2]],
+        };
+      }
+    }
   )
 );
 

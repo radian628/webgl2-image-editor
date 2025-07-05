@@ -24,8 +24,12 @@ import {
 } from "@codemirror/autocomplete";
 import { makeFancyFormatter } from "../../../glsl-analyzer/formatter/fmt-fancy";
 import { linter } from "@codemirror/lint";
+import { tags } from "@lezer/highlight";
+import { parser } from "./glsl-grammar.lezer";
 
-const identifierMark = Decoration.mark({ class: "cm-identifier" });
+const identifierMark = Decoration.mark({});
+
+console.log(parser);
 
 export function glslLanguageService(ctx: {
   fs: FilesystemAdaptor;

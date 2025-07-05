@@ -194,9 +194,17 @@ typeError("float x = ivec2(1.0, 1.0);");
 
 // array definitions
 typeCorrect("float x[1];");
+typeCorrect("float x[1u];");
 typeCorrect("float x[3];");
+typeCorrect("float x[2 + 2];");
+typeCorrect("float x[1 + 1];");
+typeCorrect("float x[ivec2(1, 1).x];");
 
 typeError("float x[1.0];");
+typeError("float x[0];");
+typeError("float x[-1];");
+typeError("float x[0u];");
+typeError("float x[-1u];");
 
 // array literals
 typeCorrect("vec2 x[1] = vec2[1](vec2(1.0));");
