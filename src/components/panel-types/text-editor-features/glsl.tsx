@@ -24,12 +24,38 @@ import {
 } from "@codemirror/autocomplete";
 import { makeFancyFormatter } from "../../../glsl-analyzer/formatter/fmt-fancy";
 import { linter } from "@codemirror/lint";
-import { tags } from "@lezer/highlight";
+import { styleTags, tags } from "@lezer/highlight";
 import { parser } from "./glsl-grammar.lezer";
+import { LRLanguage } from "@codemirror/language";
 
 const identifierMark = Decoration.mark({});
 
 console.log(parser);
+
+const parserWithHighlight = parser.configure({
+  props: [
+    styleTags({
+      StorageQualifier: tags.keyword,
+      InvariantQualifier: tags.keyword,
+      InterpolationQualifier: tags.keyword,
+      LayoutKeyword: tags.keyword,
+      PrecisionQualifier: tags.keyword,
+      '"precision"': tags.keyword,
+      "VariableIdentifier!": tags.variableName,
+      TypeSpecifierNonarray: tags.typeName,
+      Float: tags.number,
+      IntegerDecimal: tags.number,
+      IntegerOctal: tags.number,
+      IntegerHex: tags.number,
+      BooleanExpression: tags.bool,
+      "FunctionName!": tags.function(tags.variableName),
+    }),
+  ],
+});
+
+const glsl = LRLanguage.define({
+  parser: parserWithHighlight,
+});
 
 export function glslLanguageService(ctx: {
   fs: FilesystemAdaptor;
@@ -41,11 +67,19 @@ export function glslLanguageService(ctx: {
   });
 
   return [
+    glsl,
     linter(async (view) => {
-      fs.overrideFile(
-        ctx.entryPoint,
-        new Blob([view.state.sliceDoc(0, view.state.doc.length)])
-      );
+      const docstring = view.state.sliceDoc(0, view.state.doc.length);
+      fs.overrideFile(ctx.entryPoint, new Blob([docstring]));
+      parserWithHighlight.parse(docstring).iterate({
+        enter(node) {
+          console.log(
+            node.node.name,
+            docstring.slice(node.node.from, node.node.to)
+          );
+          return true;
+        },
+      });
 
       const diagnostics = await server.getDiagnostics(ctx.entryPoint);
 
@@ -132,44 +166,44 @@ export function glslLanguageService(ctx: {
         },
       ],
     }),
-    StateField.define<DecorationSet>({
-      create() {
-        return Decoration.none;
-      },
+    // StateField.define<DecorationSet>({
+    //   create() {
+    //     return Decoration.none;
+    //   },
 
-      update(deco, tr) {
-        const fullDoc = tr.state.sliceDoc(0, tr.state.doc.length);
-        const docWithoutVersion300ES = fullDoc.replace(
-          /^\s*#version\s+300\s+es/g,
-          ""
-        );
-        const parsed = parseGLSLWithoutPreprocessing(docWithoutVersion300ES);
-        const deltaSize = fullDoc.length - docWithoutVersion300ES.length;
-        if (!parsed.data.success) return Decoration.none;
+    //   update(deco, tr) {
+    //     const fullDoc = tr.state.sliceDoc(0, tr.state.doc.length);
+    //     const docWithoutVersion300ES = fullDoc.replace(
+    //       /^\s*#version\s+300\s+es/g,
+    //       ""
+    //     );
+    //     const parsed = parseGLSLWithoutPreprocessing(docWithoutVersion300ES);
+    //     const deltaSize = fullDoc.length - docWithoutVersion300ES.length;
+    //     if (!parsed.data.success) return Decoration.none;
 
-        let decorations = Decoration.none;
+    //     let decorations = Decoration.none;
 
-        mapAST(parsed.data.data.translationUnit, {
-          expr(e, i) {
-            i(e);
-            if (e.data.type === "ident") {
-              decorations = decorations.update({
-                add: [
-                  identifierMark.range(
-                    e.range.start + deltaSize,
-                    e.range.end + deltaSize
-                  ),
-                ],
-              });
-            }
-            return e;
-          },
-        });
+    //     mapAST(parsed.data.data.translationUnit, {
+    //       expr(e, i) {
+    //         i(e);
+    //         if (e.data.type === "ident") {
+    //           decorations = decorations.update({
+    //             add: [
+    //               identifierMark.range(
+    //                 e.range.start + deltaSize,
+    //                 e.range.end + deltaSize
+    //               ),
+    //             ],
+    //           });
+    //         }
+    //         return e;
+    //       },
+    //     });
 
-        return decorations;
-      },
+    //     return decorations;
+    //   },
 
-      provide: (f) => EditorView.decorations.from(f),
-    }),
+    //   provide: (f) => EditorView.decorations.from(f),
+    // }),
   ];
 }

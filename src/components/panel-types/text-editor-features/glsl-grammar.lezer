@@ -2,22 +2,31 @@
   else @left, 
   if @left,
   type,
-  variable
+  variable,
+  fieldMethod,
+  fieldVariable,
+  fncall @left,
+  primary @left,
+  precisionDeclaration,
+  initDeclaratorList
 }
 
 VariableIdentifier { Identifier }
 
 PrimaryExpression {
-  VariableIdentifier |
+  !variable VariableIdentifier |
   IntegerDecimal | IntegerOctal | IntegerHex |
   Float |
-  "true" | "false" |
+  BooleanExpression |
   "(" Expression ")"
+}
+BooleanExpression {
+  @specialize<Keyword, "true" | "false">
 }
 
 PostfixExpression {
-  (FunctionCall | PrimaryExpression)
-    ("[" IntegerExpression "]" | "." Identifier | "++" | "--")*
+  (!fncall FunctionCall | !primary PrimaryExpression)
+    ("[" IntegerExpression "]" | !fieldVariable "." Identifier | "++" | "--")*
 }
 
 IntegerExpression {
@@ -30,7 +39,7 @@ FunctionCall {
 
 FunctionCallOrMethod {
   FunctionCallGeneric |
-  PostfixExpression "." FunctionCallGeneric
+  PostfixExpression !fieldMethod "." FunctionCallGeneric
 }
 
 FunctionCallGeneric {
@@ -39,7 +48,7 @@ FunctionCallGeneric {
 }
 
 FunctionCallHeaderNoParameters {
-  FunctionCallHeader "void" |
+  FunctionCallHeader @specialize<Keyword, "void"> |
   FunctionCallHeader
 }
 
@@ -148,8 +157,8 @@ ConstantExpression {
 
 Declaration {
   FunctionPrototype ";" |
-  InitDeclaratorList ";" |
-  "precision" PrecisionQualifier TypeSpecifierNoPrec ";" |
+  !precisionDeclaration @specialize<Keyword, "precision"> PrecisionQualifier TypeSpecifierNoPrec ";" |
+  !initDeclaratorList InitDeclaratorList ";" |
   TypeQualifier Identifier "{" StructDeclarationList "}" (Identifier ("[" ConstantExpression "]")?)? ";" |
   TypeQualifier ";" 
 }
@@ -169,7 +178,10 @@ FunctionHeaderWithParameters {
 }
 
 FunctionHeader {
-  FullySpecifiedType Identifier "("
+  FullySpecifiedType FunctionName "("
+}
+FunctionName {
+  Identifier
 }
 
 ParameterDeclarator {
@@ -185,7 +197,7 @@ ParameterDeclaration {
 }
 
 ParameterQualifier {
-  "" | "in" | "out" | "inout"
+  @specialize<Keyword, "in" | "out" | "inout">
 }
 
 ParameterTypeSpecifier {
@@ -193,7 +205,7 @@ ParameterTypeSpecifier {
 }
 
 SingleDeclHelper {
-  Identifier (
+  VariableIdentifier (
     "[" ConstantExpression "]" ("=" Initializer)? |
     "[" "]" "=" Initializer |
     "=" Initializer |
@@ -208,7 +220,7 @@ InitDeclaratorList {
 
 SingleDeclaration {
   FullySpecifiedType SingleDeclHelper | 
-  "invariant" Identifier
+  @specialize<Keyword, "invariant"> VariableIdentifier 
 }
 
 FullySpecifiedType {
@@ -216,15 +228,18 @@ FullySpecifiedType {
 }
 
 InvariantQualifier {
-  "invariant"
+  @specialize<Keyword, "invariant">
 }
 
 InterpolationQualifier {
-  "smooth" | "flat"
+  @specialize<Keyword, "smooth" | "flat">
 }
 
 LayoutQualifier {
-  "layout" "(" LayoutQualifierIdList ")"
+  LayoutKeyword "(" LayoutQualifierIdList ")"
+}
+LayoutKeyword {
+  @specialize<Keyword, "layout">
 }
 
 LayoutQualifierIdList {
@@ -237,7 +252,7 @@ LayoutQualifierId {
 }
 
 ParameterTypeQualifier {
-  "const"
+  @specialize<Keyword, "const">
 }
 
 TypeQualifier {
@@ -251,7 +266,8 @@ TypeQualifier {
 }
 
 StorageQualifier {
-  "const" | "in" | "out" | "centroid" "in" | "centroid" "out" | "uniform"
+  @specialize<Keyword, "const" | "in" | "out" | "uniform">
+  | @specialize<Keyword, "centroid"> @specialize<Keyword, "in" | "out">
 }
 
 TypeSpecifier {
@@ -264,8 +280,9 @@ TypeSpecifierNoPrec {
 }
 
 TypeSpecifierNonarray {
-  "void" | "float" | "int" | "uint" | "bool" | 
-    "bvec2" |
+  !type (
+      @specialize<Keyword, 
+    "void" | "float" | "int" | "uint" | "bool" | "bvec2" |
     "bvec3" |
     "bvec4" |
     "ivec2" |
@@ -303,17 +320,18 @@ TypeSpecifierNonarray {
     "usampler2d" |
     "usampler3d" |
     "usamplercube" |
-    "usampler2darray" |
-    StructSpecifier |
-    Identifier
+    "usampler2darray"
+      >
+    | StructSpecifier
+    | Identifier)
 }
 
 PrecisionQualifier {
-  "highp" | "mediump" | "lowp"
+  @specialize<Keyword, "highp" | "mediump" | "lowp">
 }
 
 StructSpecifier {
-  "struct" Identifier? "{" StructDeclarationList "}" 
+  @specialize<Keyword, "struct"> Identifier? "{" StructDeclarationList "}" 
 }
 
 StructDeclarationList {
@@ -383,11 +401,11 @@ ExpressionStatement {
 
 
 SelectionStatement {
-  !if "if" "(" Expression ")" SelectionRestStatement
+  !if @specialize<Keyword, "if"> "(" Expression ")" SelectionRestStatement
 }
 
 SelectionRestStatement {
-  !else StatementWithScope ("else" StatementWithScope)?
+  !else StatementWithScope (@specialize<Keyword, "else"> StatementWithScope)?
 }
 
 Condition {
@@ -396,7 +414,7 @@ Condition {
 }
 
 SwitchStatement {
-  "switch" "(" Expression ")" "{" SwitchStatementList "}" 
+  @specialize<Keyword, "switch"> "(" Expression ")" "{" SwitchStatementList "}" 
 }
 
 SwitchStatementList {
@@ -404,14 +422,14 @@ SwitchStatementList {
 }
 
 CaseLabel {
-  "case" Expression ":" |
-  "default" ":"
+  @specialize<Keyword, "case"> Expression ":" |
+  @specialize<Keyword, "default"> ":"
 }
 
 IterationStatement {
-  "while" "(" Condition ")" StatementNoNewScope |
-  "do" StatementWithScope "while" "(" Expression ")" ";" |
-  "for" "(" ForInitStatement ForRestStatement ")" StatementNoNewScope
+  @specialize<Keyword, "while"> "(" Condition ")" StatementNoNewScope |
+  @specialize<Keyword, "do"> StatementWithScope @specialize<Keyword, "while"> "(" Expression ")" ";" |
+  @specialize<Keyword, "for"> "(" ForInitStatement ForRestStatement ")" StatementNoNewScope
 }
 
 ForInitStatement {
@@ -427,7 +445,9 @@ ForRestStatement {
 }
 
 JumpStatement {
-  ("continue" | "break" | "return" Expression? | "discard") ";"
+  (@specialize<Keyword, "continue" | "break"> | 
+  @specialize<Keyword, "return"> Expression? |
+  @specialize<Keyword, "discard">) ";"
 }
 
 TranslationUnit {
@@ -443,13 +463,14 @@ FunctionDefinition {
 }
 
 @top Program {
-  TranslationUnit
+  VersionString? TranslationUnit
 }
 
 @skip {
   Space | Comment
 }
 
+ 
 @tokens {
   Space { @whitespace+ }
   Comment { "//" ![\n]* | "/*" ![]* "*/" }
@@ -510,83 +531,99 @@ FunctionDefinition {
     "&" |
     "?"
   }
-  Keyword {
-    "const" |
-    "bool" |
-    "float" |
-    "int" |
-    "uint" |
-    "break" |
-    "continue" |
-    "do" |
-    "else" |
-    "for" |
-    "if" |
-    "discard" |
-    "return" |
-    "switch" |
-    "case" |
-    "default" |
-    "bvec2" |
-    "bvec3" |
-    "bvec4" |
-    "ivec2" |
-    "ivec3" |
-    "ivec4" |
-    "uvec2" |
-    "uvec3" |
-    "uvec4" |
-    "vec2" |
-    "vec3" |
-    "vec4" |
-    "mat2" |
-    "mat3" |
-    "mat4" |
-    "centroid" |
-    "in" |
-    "out" |
-    "inout" |
-    "uniform" |
-    "flat" |
-    "smooth" |
-    "layout" |
-    "mat2x2" |
-    "mat2x3" |
-    "mat2x4" |
-    "mat3x2" |
-    "mat3x3" |
-    "mat3x4" |
-    "mat4x2" |
-    "mat4x3" |
-    "mat4x4" |
-    "sampler2d" |
-    "sampler3d" |
-    "samplercube" |
-    "sampler2dshadow" |
-    "samplercubeshadow" |
-    "sampler2darray" |
-    "sampler2darrayshadow" |
-    "isampler2d" |
-    "isampler3d" |
-    "isamplercube" |
-    "isampler2darray" |
-    "usampler2d" |
-    "usampler3d" |
-    "usamplercube" |
-    "usampler2darray" |
-    "struct" |
-    "void" |
-    "while" |
-    "invariant" |
-    "highp" |
-    "mediump" |
-    "lowp" |
-    "true" |
-    "false" |
-    "shared" |
-    "packed" |
-    "std140" |
-    "row_major" |
-    "column_major"
+
+Keyword {
+  "const" |
+  "bool" |
+  "float" |
+  "int" |
+  "uint" |
+  "break" |
+  "continue" |
+  "do" |
+  "else" |
+  "for" |
+  "if" |
+  "discard" |
+  "return" |
+  "switch" |
+  "case" |
+  "default" |
+  "bvec2" |
+  "bvec3" |
+  "bvec4" |
+  "ivec2" |
+  "ivec3" |
+  "ivec4" |
+  "uvec2" |
+  "uvec3" |
+  "uvec4" |
+  "vec2" |
+  "vec3" |
+  "vec4" |
+  "mat2" |
+  "mat3" |
+  "mat4" |
+  "centroid" |
+  "in" |
+  "out" |
+  "inout" |
+  "uniform" |
+  "flat" |
+  "smooth" |
+  "layout" |
+  "mat2x2" |
+  "mat2x3" |
+  "mat2x4" |
+  "mat3x2" |
+  "mat3x3" |
+  "mat3x4" |
+  "mat4x2" |
+  "mat4x3" |
+  "mat4x4" |
+  "sampler2d" |
+  "sampler3d" |
+  "samplercube" |
+  "sampler2dshadow" |
+  "samplercubeshadow" |
+  "sampler2darray" |
+  "sampler2darrayshadow" |
+  "isampler2d" |
+  "isampler3d" |
+  "isamplercube" |
+  "isampler2darray" |
+  "usampler2d" |
+  "usampler3d" |
+  "usamplercube" |
+  "usampler2darray" |
+  "struct" |
+  "void" |
+  "while" |
+  "invariant" |
+  "highp" |
+  "mediump" |
+  "lowp" |
+  "true" |
+  "false" |
+  "shared" |
+  "packed" |
+  "std140" |
+  "row_major" |
+  "column_major"
+}
+
+  VersionString {
+    "#version 300 es"
+  }
+
+  @precedence {
+    Comment,
+    "/",
+    IntegerHex,
+    Float,
+    IntegerDecimal,
+    IntegerOctal,
+    Keyword,
+    Identifier
   }
 }

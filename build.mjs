@@ -119,7 +119,9 @@ const lezerPlugin = {
       });
       return {
         contents: files.parser,
+        watchFiles: [args.path],
         loader: "ts",
+        resolveDir: "node_modules",
       };
     });
   },
