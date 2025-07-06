@@ -41,6 +41,10 @@ export function FileOrDirDisplay(props: {
 
   const [clicking, setClicking] = useState<boolean>(false);
 
+  const [creatingFileName, setCreatingFileName] = useState<
+    string | undefined
+  >();
+
   useEffect(() => {
     if (clicking) {
       const listener = (e: MouseEvent) => {
@@ -53,34 +57,44 @@ export function FileOrDirDisplay(props: {
 
   const expanded = props.expandedMap.get(props.path);
 
-  useEffect(() => {
-    (async () => {
-      const isDir = await fs.isDir(path);
-      if (isDir === undefined)
-        return setData({ type: "error", why: `Cannot find '${path}'` });
-      if (isDir) {
-        if (expanded) {
-          const dirContents = await fs.readDir(path);
-          if (!dirContents)
-            return setData({
-              type: "error",
-              why: `Cannot find contents of '${path}'`,
-            });
-          setData({
-            type: "dir",
-            name: path.split("/").at(-1) ?? "No Name",
-            contents: dirContents,
+  const refreshFiles = async () => {
+    const isDir = await fs.isDir(path);
+    if (isDir === undefined)
+      return setData({ type: "error", why: `Cannot find '${path}'` });
+    if (isDir) {
+      if (expanded) {
+        const dirContents = await fs.readDir(path);
+        if (!dirContents)
+          return setData({
+            type: "error",
+            why: `Cannot find contents of '${path}'`,
           });
-        } else {
-          setData({
-            type: "dir",
-            name: path.split("/").at(-1) ?? "No Name",
-          });
-        }
+        setData({
+          type: "dir",
+          name: path.split("/").at(-1) ?? "No Name",
+          contents: dirContents,
+        });
       } else {
-        setData({ type: "file", name: path.split("/").at(-1) ?? "No Name" });
+        setData({
+          type: "dir",
+          name: path.split("/").at(-1) ?? "No Name",
+        });
       }
-    })();
+    } else {
+      setData({ type: "file", name: path.split("/").at(-1) ?? "No Name" });
+    }
+  };
+
+  useEffect(() => {
+    refreshFiles();
+    const unsub = fs.watchPattern(
+      props.path,
+      (path) => true,
+      () => {
+        refreshFiles();
+      }
+    );
+    return unsub;
   }, [fs, path, expanded]);
 
   if (!data) return <div>Loading...</div>;
@@ -122,18 +136,56 @@ export function FileOrDirDisplay(props: {
 
   return (
     <div className="directory-root">
-      <div
-        className="directory-button"
-        onClick={(e) => {
-          props.setExpandedMap(
-            new Map(props.expandedMap).set(
-              props.path,
-              !props.expandedMap.get(props.path)
-            )
-          );
-        }}
-      >
-        {expanded ? "-" : "+"} {data.name}
+      <div className="directory-line">
+        <div
+          className="directory-button"
+          onClick={(e) => {
+            props.setExpandedMap(
+              new Map(props.expandedMap).set(
+                props.path,
+                !props.expandedMap.get(props.path)
+              )
+            );
+          }}
+        >
+          {expanded ? "-" : "+"} {data.name}
+        </div>
+        <div className="new-file-container">
+          {creatingFileName !== undefined ? (
+            <input
+              className="new-file-input"
+              value={creatingFileName}
+              ref={(e) => {
+                e?.focus();
+              }}
+              onInput={(e) => {
+                setCreatingFileName(e.currentTarget.value);
+              }}
+              onKeyDown={async (e) => {
+                if (e.key === "Enter") {
+                  const newpath = props.path + "/" + creatingFileName;
+                  if ((await props.fs.isDir(newpath)) === undefined) {
+                    const writeFileResult = await props.fs.writeFile(
+                      newpath,
+                      new Blob([""])
+                    );
+                    setCreatingFileName(undefined);
+                    console.log(newpath, writeFileResult);
+                  }
+                }
+              }}
+            ></input>
+          ) : (
+            <button
+              className="new-file-button"
+              onClick={() => {
+                setCreatingFileName("");
+              }}
+            >
+              +
+            </button>
+          )}
+        </div>
       </div>
       {expanded && (
         <ul className="directory-list">

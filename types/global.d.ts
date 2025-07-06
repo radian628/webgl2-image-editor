@@ -24,6 +24,10 @@ declare module "*?vfs" {
   const tree: VirtualFilesystemTree;
   export default tree;
 }
+declare module "*?vfs&depth=1&filterSuffix=.d.ts" {
+  const tree: VirtualFilesystemTree;
+  export default tree;
+}
 
 declare module "*.lezer" {
   import { LRParser } from "@lezer/lr";

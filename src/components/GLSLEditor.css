@@ -3,6 +3,6 @@
 }
 
 .glsl-editor-container {
-  color: white;
+  color: var(--foreground-color);
   overflow: auto;
 }

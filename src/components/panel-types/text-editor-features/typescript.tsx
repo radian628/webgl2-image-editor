@@ -1,10 +1,6 @@
-import * as ts from "typescript";
+import type ts from "typescript";
 import { FilesystemAdaptor } from "../../../filesystem/FilesystemAdaptor";
 import { Diagnostic, linter } from "@codemirror/lint";
-import TypescriptLib from "../../../../node_modules/typescript/lib/lib.d.ts?raw";
-import TypescriptDomLib from "../../../../node_modules/typescript/lib/lib.dom.d.ts?raw";
-import TypescriptES5Lib from "../../../../node_modules/typescript/lib/lib.es5.d.ts?raw";
-import EvalboxDefs from "../../iframe-runtime/EvalboxDefs.ts?dtstext";
 import {
   javascript,
   javascriptLanguage,
@@ -20,23 +16,40 @@ import { hoverTooltip, showTooltip, Tooltip } from "@codemirror/view";
 import { parseGLSLWithoutPreprocessing } from "../../../glsl-analyzer/parser-combined";
 import { getInputsOutputsAndUniforms } from "../../../glsl-analyzer/get-inputs-outputs";
 import { watchForStaticallyInferredShaders } from "./statically-inferred-shaders";
-import * as prettier from "prettier";
-import * as prettierPluginTypescript from "prettier/plugins/typescript";
-import * as prettierPluginEstree from "prettier/plugins/estree";
+// import * as prettier from "prettier";
+// import * as prettierPluginTypescript from "prettier/plugins/typescript";
+// import * as prettierPluginEstree from "prettier/plugins/estree";
 import { JSX } from "react";
 import React from "react";
+// import TypescriptLibraries from "./typescript-libraries";
+
+let cachedTypescript: typeof import("typescript");
+export async function typescript() {
+  if (cachedTypescript) return cachedTypescript;
+  cachedTypescript = (await import("typescript")).default;
+  console.log("ts", cachedTypescript);
+  return cachedTypescript;
+}
+
+let tslibsLoaded = false;
+const tslibText: Record<string, string> = {};
 
 /// <reference path="../../../../types/global.d.ts" />
 
-function formatTypescriptFragment(str: string) {
-  return prettier.format(str, {
-    plugins: [prettierPluginTypescript, prettierPluginEstree],
+async function formatTypescriptFragment(str: string) {
+  return await (
+    await import("prettier")
+  ).format(str, {
+    plugins: [
+      await import("prettier/plugins/typescript"),
+      (await import("prettier/plugins/estree")).default,
+    ],
     parser: "typescript",
     objectWrap: "collapse",
   });
 }
 
-export function typescriptLanguageService(
+export async function typescriptLanguageService(
   rootFileNames: string[],
   entryPoint: string,
   fs: FilesystemAdaptor,
@@ -44,6 +57,25 @@ export function typescriptLanguageService(
   options: ts.CompilerOptions,
   setDocumentation: (c: () => JSX.Element) => void
 ) {
+  const ts = await typescript();
+
+  const tslibsStr: string = "./typescript-libraries.js";
+
+  const TypescriptLibraries = (await import(tslibsStr)).default;
+  if (TypescriptLibraries.type === "dir") {
+    for (const [k, v] of TypescriptLibraries.contents) {
+      if (v.type === "file") {
+        const text = await v.contents.text();
+        tslibText["@internal/" + k.replace(/^lib\./g, "")] = text;
+        tslibText["@internal/" + k] = text;
+      }
+    }
+    tslibsLoaded = true;
+  }
+
+  const evalboxdefsStr: string = "./EvalboxDefsWrapper.js";
+  const EvalboxDefs = (await import(evalboxdefsStr)).default;
+
   const files: ts.MapLike<{ version: number }> = {};
 
   rootFileNames.forEach((fileName) => {
@@ -56,6 +88,11 @@ export function typescriptLanguageService(
 
   async function loadFile(fileName: string) {
     const fileContents = (await (await fs.readFile(fileName))?.text()) ?? null;
+    if (snapshots.get(fileName) !== fileContents) {
+      files[fileName] = files[fileName]
+        ? { version: files[fileName].version + 1 }
+        : { version: 0 };
+    }
     snapshots.set(fileName, fileContents);
   }
 
@@ -69,14 +106,13 @@ export function typescriptLanguageService(
   });
 
   function loadFileSync(fileName: string) {
+    console.log("RESOLVED TO", fileName);
+    if (tslibText[fileName]) {
+      return tslibText[fileName];
+    } else {
+    }
     if (fileName === entryPoint) return unsavedWork ?? snapshots.get(fileName);
-    if (fileName === "@internal/lib.d.ts") {
-      return TypescriptLib;
-    } else if (fileName === "@internal/dom.d.ts") {
-      return TypescriptDomLib;
-    } else if (fileName === "@internal/es5.d.ts") {
-      return TypescriptES5Lib;
-    } else if (fileName === "@internal/EvalboxDefs.d.ts") {
+    if (fileName === "@internal/EvalboxDefs.d.ts") {
       return EvalboxDefs; //+ `export {clear} "components/iframe-runtime/EvalboxDefs";`;
       // `\ndeclare global { export { clear } from "components/iframe-runtime/EvalboxDefs"; } export {};`
     } else if (
@@ -96,7 +132,7 @@ export function typescriptLanguageService(
     getScriptSnapshot: (fileName) => {
       let fileContents = loadFileSync(fileName);
       loadFile(fileName);
-      if (!fileContents) return;
+      if (fileContents === null || fileContents === undefined) return;
 
       return ts.ScriptSnapshot.fromString(fileContents);
     },
@@ -109,7 +145,9 @@ export function typescriptLanguageService(
     },
     readFile: (path) => {
       loadFile(path);
-      return loadFileSync(path) ?? undefined;
+      const loadedFile = loadFileSync(path);
+      if (loadedFile === null) return undefined;
+      return loadedFile;
     },
   };
 

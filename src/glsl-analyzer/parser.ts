@@ -135,7 +135,7 @@ export type AssignmentExpr = {
 export type UnaryOpExpr = {
   type: "unary-op";
   left: ASTNode<Expr>;
-  op: "++" | "--" | "!" | "~";
+  op: "++" | "--" | "!" | "~" | "+" | "-";
   isAfter: boolean;
   _isExpr: true;
 };

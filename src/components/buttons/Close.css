@@ -1,0 +1,17 @@
+.close-button-no-background {
+  background-color: transparent;
+  border: none;
+  margin: 0;
+  padding: 0;
+  font-size: 1rem;
+  height: 1lh;
+  display: inline-block;
+  vertical-align: -0.23lh;
+  cursor: pointer;
+
+  > svg {
+    width: 1lh;
+    height: 1lh;
+    font-size: 1rem;
+  }
+}

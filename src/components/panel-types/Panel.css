@@ -15,25 +15,27 @@
   flex-direction: row;
   flex-wrap: wrap;
   list-style: none;
+  margin-top: 5px;
+  margin-bottom: 5px;
 
   li {
     padding: 5px;
     margin: 2px;
-    background-color: #fff3;
+    background-color: var(--background-color-2);
   }
 
   li:hover {
-    background-color: #fff6;
+    background-color: var(--background-color-3);
   }
 
   li.selected {
-    background-color: white;
-    color: black;
+    background-color: var(--foreground-color-2);
+    color: var(--background-color);
   }
 }
 
 .panel-root {
-  background-image: linear-gradient(45deg, #222, #333);
+  background-color: var(--background-color);
   color: white;
   height: 100%;
   display: flex;

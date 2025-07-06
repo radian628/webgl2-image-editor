@@ -17,6 +17,7 @@ import { id, lens } from "../../utils/lens";
 import { v4 } from "uuid";
 import { ImagePreviewPanel } from "./ImagePreviewPanel";
 import { DocumentationPanel } from "./DocumentationPanel";
+import { CloseButtonNoBackground } from "../buttons/Close";
 
 export const PanelItem = (props: {
   data: PanelContentsItem;
@@ -78,7 +79,9 @@ export const Panel: PanelComponent<PanelContents> = (
       {props.data.items.map((i, index) => {
         return (
           <li
-            className={index === props.data.openIndex ? "selected" : ""}
+            className={
+              index === props.data.openIndex ? "selected button" : "button"
+            }
             onClick={() => {
               props.setData((data) => ({
                 ...data,
@@ -88,6 +91,14 @@ export const Panel: PanelComponent<PanelContents> = (
             key={i.id}
           >
             {panelItemToName(i)}
+            <CloseButtonNoBackground
+              onClick={() => {
+                props.setData((data) => ({
+                  openIndex: Math.min(0, data.openIndex - 1),
+                  items: data.items.filter((item, j) => j !== index),
+                }));
+              }}
+            ></CloseButtonNoBackground>
           </li>
         );
       })}

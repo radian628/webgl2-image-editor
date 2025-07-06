@@ -30,8 +30,6 @@ import { LRLanguage } from "@codemirror/language";
 
 const identifierMark = Decoration.mark({});
 
-console.log(parser);
-
 const parserWithHighlight = parser.configure({
   props: [
     styleTags({
@@ -40,7 +38,7 @@ const parserWithHighlight = parser.configure({
       InterpolationQualifier: tags.keyword,
       LayoutKeyword: tags.keyword,
       PrecisionQualifier: tags.keyword,
-      '"precision"': tags.keyword,
+      PrecisionKeyword: tags.keyword,
       "VariableIdentifier!": tags.variableName,
       TypeSpecifierNonarray: tags.typeName,
       Float: tags.number,
@@ -71,15 +69,6 @@ export function glslLanguageService(ctx: {
     linter(async (view) => {
       const docstring = view.state.sliceDoc(0, view.state.doc.length);
       fs.overrideFile(ctx.entryPoint, new Blob([docstring]));
-      parserWithHighlight.parse(docstring).iterate({
-        enter(node) {
-          console.log(
-            node.node.name,
-            docstring.slice(node.node.from, node.node.to)
-          );
-          return true;
-        },
-      });
 
       const diagnostics = await server.getDiagnostics(ctx.entryPoint);
 

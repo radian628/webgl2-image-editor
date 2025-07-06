@@ -28,7 +28,6 @@ import {
   getFunctionParamTypeNode,
   isIntOrIntVector,
 } from "./typecheck";
-import { glslBuiltinScope } from "./builtins";
 import { Result } from "../../utils/result";
 import {
   evaluateExpression,
@@ -45,6 +44,7 @@ import {
   stringifyType,
   TypeResult,
 } from "./glsltype";
+import { getGLSLBuiltins } from "./builtins";
 
 export type GLSLAutocompleteOption = {
   str: string;
@@ -55,11 +55,13 @@ export type ScopeItem =
   | {
       dataType: Commented<FullySpecifiedType>;
       name: Commented<string>;
+      notUserVisible?: boolean;
       type: "variable";
     }
   | {
       type: "function";
       globalScope: Scope;
+      notUserVisible?: boolean;
       signatures:
         | {
             type: "list";
@@ -92,6 +94,7 @@ export type Scope = {
 export type GLSLSemanticAnalysis = {
   translationUnit: TranslationUnit;
   globalScope: Scope;
+  builtinScope: Scope;
 };
 
 export type GLSLSignatureHelp = {
@@ -121,7 +124,7 @@ export function getScopeOf(
 }
 
 function getEnclosingScopes(scope: Scope, pos: number): Scope[] {
-  const res = [glslBuiltinScope(0, scope.end), scope];
+  const res = [scope];
   for (const innerScope of scope.innerScopes) {
     if (pos >= innerScope.start && pos < innerScope.end) {
       return res.concat(getEnclosingScopes(innerScope, pos));
@@ -349,7 +352,9 @@ export function getFunctionCallName(call: FunctionCallExpr): string {
 
 async function semanticallyAnalyzeGLSL(
   filepath: string,
-  ctx: SemanticAnalysisContext
+  ctx: SemanticAnalysisContext,
+  noStdlib?: boolean,
+  inject?: Map<string, ScopeItem>
 ): Promise<GLSLSemanticAnalysis | undefined> {
   const fileData = ctx.semanticAnalysisInfo.get(filepath);
   const versions = ctx.fileVersions.get(filepath);
@@ -358,7 +363,6 @@ async function semanticallyAnalyzeGLSL(
   if (fileData && versions && versions.version === fileData?.version) {
     return fileData.info;
   }
-
   // not up-to-date; do semantic analysis again
   let fileStr = versions?.data;
   if (!fileStr) {
@@ -393,8 +397,20 @@ async function semanticallyAnalyzeGLSL(
     ctx
   );
 
+  if (inject) {
+    for (const [k, v] of inject) {
+      globalScope.items.set(k, v);
+    }
+  }
+
   return {
     globalScope,
+    builtinScope: await getGLSLBuiltins(
+      0,
+      fileStr.length,
+      [globalScope],
+      noStdlib
+    ),
     translationUnit: parseResult.data.data.translationUnit,
   };
 }
@@ -452,6 +468,23 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
   >();
 
   return {
+    async semanticallyAnalyzeGLSL(
+      file: string,
+      noStdlib: boolean,
+      inject?: Map<string, ScopeItem>
+    ) {
+      const sem = await semanticallyAnalyzeGLSL(
+        file,
+        {
+          fileVersions,
+          semanticAnalysisInfo,
+          fs,
+        },
+        noStdlib,
+        inject
+      );
+      return sem;
+    },
     async evaluate(
       file: string,
       functionName: string
@@ -466,22 +499,25 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
 
       return evaluateTranslationUnit(
         sem.translationUnit,
-        [
-          glslBuiltinScope(
-            sem.translationUnit.range.start,
-            sem.translationUnit.range.end
-          ),
-          sem.globalScope,
-        ],
+        [sem.builtinScope, sem.globalScope],
         functionName
       );
     },
-    async getDiagnostics(file: string) {
-      const sem = await semanticallyAnalyzeGLSL(file, {
-        fileVersions,
-        semanticAnalysisInfo,
-        fs,
-      });
+    async getDiagnostics(
+      file: string,
+      noStdlib?: boolean,
+      inject?: Map<string, ScopeItem>
+    ) {
+      const sem = await semanticallyAnalyzeGLSL(
+        file,
+        {
+          fileVersions,
+          semanticAnalysisInfo,
+          fs,
+        },
+        noStdlib,
+        inject
+      );
 
       if (!sem) return;
 
@@ -501,7 +537,10 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
           mapInner(expr);
 
           if (expr.data.type === "ident") {
-            const scope = getEnclosingScopes(sem.globalScope, expr.range.start);
+            const scope = getEnclosingScopes(
+              sem.builtinScope,
+              expr.range.start
+            );
 
             const def = scopeFind(scope, expr.data.ident);
 
@@ -513,7 +552,10 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
               });
             }
           } else if (expr.data.type === "function-call") {
-            const scope = getEnclosingScopes(sem.globalScope, expr.range.start);
+            const scope = getEnclosingScopes(
+              sem.builtinScope,
+              expr.range.start
+            );
 
             const fnName = getFunctionCallName(expr.data);
 
@@ -544,7 +586,7 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
         },
 
         decl(decl, mapInner) {
-          const scopes = getEnclosingScopes(sem.globalScope, decl.range.start);
+          const scopes = getEnclosingScopes(sem.builtinScope, decl.range.start);
           if (
             decl.data.type === "declarator-list" &&
             decl.data.declaratorList.data.init.data.type === "type"
@@ -663,7 +705,7 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
         },
 
         expr(expr, mapInner) {
-          const scope = getEnclosingScopes(sem.globalScope, expr.range.start);
+          const scope = getEnclosingScopes(sem.builtinScope, expr.range.start);
           const type = getExprType(expr, scope);
 
           for (const t of type.errors) {
@@ -693,7 +735,7 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
 
       if (!sem) return;
 
-      const enclosingScopes = getEnclosingScopes(sem.globalScope, pos);
+      const enclosingScopes = getEnclosingScopes(sem.builtinScope, pos);
 
       // get all function calls in document
       const fncalls: ASTNode<FunctionCallExpr>[] = [];
@@ -750,7 +792,7 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
 
       if (!a) return [];
 
-      const enclosingScopes = getEnclosingScopes(a.globalScope, pos);
+      const enclosingScopes = getEnclosingScopes(a.builtinScope, pos);
 
       return enclosingScopes
         .map((e) => [

@@ -12,6 +12,12 @@ export type FilesystemAdaptor = {
   ) => () => void;
 };
 
+export type SyncFilesystemAdaptor = {
+  [Key in keyof FilesystemAdaptor]: (
+    ...args: Parameters<FilesystemAdaptor[Key]>
+  ) => Awaited<ReturnType<FilesystemAdaptor[Key]>>;
+};
+
 export type VirtualFilesystemTree =
   | {
       type: "dir";
@@ -96,16 +102,20 @@ export function createVirtualFilesystem(
           item = itemTemp;
         } else {
           const olditem = item;
-          item = {
-            type: "dir",
-            name: pathSegment,
-            contents: new Map(),
-          };
+          item =
+            splitPath.length == 0
+              ? { type: "file", name: pathSegment, contents }
+              : {
+                  type: "dir",
+                  name: pathSegment,
+                  contents: new Map(),
+                };
           olditem.contents.set(pathSegment, item);
         }
       }
 
       if (item.type === "file") {
+        if (!contents) return Promise.resolve(undefined);
         item.contents = contents;
         for (const w of watchers.get(path) ?? []) {
           w();

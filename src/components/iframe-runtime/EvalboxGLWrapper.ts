@@ -11,6 +11,28 @@ const client = createGLMessageClient((msg) => {
   });
 });
 
+declare global {
+  interface Window {
+    loopCancellers: (() => void)[];
+  }
+}
+
+window.loopCancellers = [];
+
+window.loop = function (callback: (time: number) => void) {
+  let stop = false;
+  function inner(time: number) {
+    callback(time);
+    if (!stop) {
+      window.requestAnimationFrame(inner);
+    }
+  }
+  window.requestAnimationFrame(inner);
+  const cancel = () => (stop = true);
+  window.loopCancellers.push(cancel);
+  return cancel;
+};
+
 for (const [k, v] of Object.entries(client)) {
   // @ts-expect-error
   window[k] = v;

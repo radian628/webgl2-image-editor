@@ -17,23 +17,71 @@ type UIOptionNumerical = {
   count: 1 | 2 | 3 | 4;
 };
 
-export type UIOption = UIOptionMenu | UIOptionNumerical;
+type UIOptionOrbitControls = {
+  type: "orbit";
+};
+
+type UIOptionFirstPersonControls = {
+  type: "first-person";
+};
+
+type UIOptionSelect = {
+  type: "select";
+  options: Record<string, UIOption>;
+};
+
+type Matrix4x4 = [
+  number,
+  number,
+  number,
+  number,
+
+  number,
+  number,
+  number,
+  number,
+
+  number,
+  number,
+  number,
+  number,
+
+  number,
+  number,
+  number,
+  number,
+];
+
+export type UIOption =
+  | UIOptionMenu
+  | UIOptionNumerical
+  | UIOptionOrbitControls
+  | UIOptionFirstPersonControls
+  | UIOptionSelect;
 
 export type UIReturnType<T extends UIOption> = T extends UIOptionMenu
   ? {
       [Key in keyof T["fields"]]: UIReturnType<T["fields"][Key]>;
     }
   : T extends UIOptionNumerical
-  ? T["count"] extends 1
-    ? number
-    : T["count"] extends 2
-    ? [number, number]
-    : T["count"] extends 3
-    ? [number, number, number]
-    : T["count"] extends 4
-    ? [number, number, number, number]
-    : never
-  : never;
+    ? T["count"] extends 1
+      ? number
+      : T["count"] extends 2
+        ? [number, number]
+        : T["count"] extends 3
+          ? [number, number, number]
+          : T["count"] extends 4
+            ? [number, number, number, number]
+            : never
+    : T extends UIOptionOrbitControls
+      ? {
+          transform: Matrix4x4;
+        }
+      : T extends UIOptionFirstPersonControls
+        ? {
+            transform: Matrix4x4;
+          }
+        : never;
 
 export type UniformSpec = {
   type: "float" | "int" | "uint";

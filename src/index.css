@@ -17,7 +17,51 @@
 }
 
 body {
-  background-color: #333333;
+  background-color: var(--background-color);
   padding: 0;
   margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+:root {
+  --background-color: #1d1d22;
+  --background-color-2: #444455;
+  --background-color-3: #666688;
+  --foreground-color: white;
+  --foreground-color-3: #9999aa;
+  --foreground-color-2: #ccccee;
+  --highlight-color: #8888ff;
+  --border-color: #777799;
+
+  --keyword-color: red;
+  --variable-name-color: green;
+  --bool-color: orange;
+  --float-color: yellow;
+  --number-color: yellow;
+  --literal-color: yellow;
+  --string-literal-color: violet;
+  --int-color: blue;
+  --function-color: lime;
+  --property-color: cyan;
+  --type-name: lightblue;
+}
+
+button,
+.button {
+  background-color: var(--background-color-2);
+  border: 1px solid var(--border-color);
+  color: var(--color);
+  margin: 3px;
+  cursor: pointer;
+}
+
+:is(button, .button):hover {
+  background-color: var(--background-color-3);
+}
+
+select {
+  border: 1px solid var(--border-color);
+  background-color: var(--background-color-2);
+  color: var(--foreground-color);
+  margin: 5px;
 }

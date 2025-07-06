@@ -18,12 +18,8 @@
 .panel-dragger {
   position: absolute;
   z-index: 2;
-  background-color: transparent;
-  transition: background-color 0.25s;
-}
-
-.panel-dragger:hover {
-  background-color: black;
+  background-color: var(--highlight-color);
+  background-clip: content-box;
 }
 
 .panel-set-horizontal {
@@ -34,11 +30,18 @@
     height: 100%;
 
     > .panel-dragger {
-      width: 10px;
+      width: 1px;
+      padding-left: 5px;
+      padding-right: 5px;
       height: 100%;
       right: 0;
       cursor: col-resize;
       transform: translateX(50%);
+      transition: width 0.25s;
+    }
+
+    > .panel-dragger:hover {
+      width: 5px;
     }
   }
 }
@@ -52,10 +55,15 @@
 
     > .panel-dragger {
       width: 100%;
-      height: 10px;
+      height: 5px;
       bottom: 0;
       cursor: row-resize;
       transform: translateY(50%);
+      transition: height 0.25s;
+    }
+
+    > .panel-dragger:hover {
+      height: 5px;
     }
   }
 }

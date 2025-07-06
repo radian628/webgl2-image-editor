@@ -6,7 +6,6 @@ import {
   GLMessage,
   GLMessageContext,
 } from "../iframe-runtime/GLMessageProtocol";
-import ts from "typescript";
 import * as esbuild from "esbuild-wasm";
 import { v4 } from "uuid";
 
@@ -103,6 +102,7 @@ export function ImagePreviewPanel(props: {
               name: "vfs",
               setup(build) {
                 build.onResolve({ filter: /.*/ }, async (args) => {
+                  console.log(args.path);
                   return {
                     path: args.path,
                     namespace: "app",
@@ -110,10 +110,13 @@ export function ImagePreviewPanel(props: {
                 });
 
                 build.onLoad({ filter: /.*/ }, async (args) => {
+                  console.log(args.path);
+                  const filestr = await (await props.data.file!.fs.readFile(
+                    args.path
+                  ))!.text();
                   return {
-                    contents: await (await props.data.file!.fs.readFile(
-                      args.path
-                    ))!.text(),
+                    contents: filestr,
+                    loader: "ts",
                   } satisfies esbuild.OnLoadResult;
                 });
               },
@@ -123,12 +126,14 @@ export function ImagePreviewPanel(props: {
         return buildResult.outputFiles[0].text;
       })();
 
-      evalbox.addEventListener("load", () => {
+      const evalboxLoadListener = () => {
         (async () => {
           await execEvalbox(evalbox, evalboxGLWrapper);
           await execEvalbox(evalbox, await esbuildResult);
         })();
-      });
+      };
+
+      evalbox.addEventListener("load", evalboxLoadListener);
 
       const buffers = new Map<string, WebGLBuffer>();
       const shaders = new Map<string, WebGLShader>();
@@ -137,10 +142,16 @@ export function ImagePreviewPanel(props: {
 
       evalbox.setAttribute("sandbox", "allow-scripts");
       evalbox.setAttribute("origin", window.location.origin);
+      evalbox.src = "/components/iframe-runtime/";
       evalbox.srcdoc = Evalbox;
-      evalbox.style.display = "none";
+      evalbox.style.opacity = "0";
+      evalbox.style.pointerEvents = "none";
+      evalbox.style.position = "absolute";
+      evalbox.style.top = "0";
+      evalbox.style.left = "0";
       document.body.appendChild(evalbox);
-      window.addEventListener("message", (e) => {
+
+      const messageListener = (e: MessageEvent) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const gl = canvas.getContext("webgl2");
@@ -164,8 +175,14 @@ export function ImagePreviewPanel(props: {
             "*"
           );
         })();
-      });
-      return () => void document.body.removeChild(evalbox);
+      };
+
+      window.addEventListener("message", messageListener);
+      return () => {
+        void document.body.removeChild(evalbox);
+        window.removeEventListener("message", messageListener);
+        evalbox.removeEventListener("load", evalboxLoadListener);
+      };
     }
   }, [file, props.data.file, evalboxGLWrapper]);
 

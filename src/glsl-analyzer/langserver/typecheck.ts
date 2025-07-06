@@ -1112,7 +1112,7 @@ export function getExprType(
             );
           }
           return {
-            errors: operandType.errors,
+            errors: errors,
             type: builtinTypes.bool,
           };
         }
@@ -1127,9 +1127,28 @@ export function getExprType(
             );
           }
           return {
-            errors: operandType.errors,
+            errors: errors,
             type: builtinTypes.bool,
           };
+        case "+":
+        case "-": {
+          let errors = operandType.errors.concat();
+          if (!isNumericalVector(operandType.type)) {
+            errors = errors.concat(
+              nodeTypeErr(
+                expr,
+                `Operator '${expr.data.op}' requires a number or numerical vector; the suppllied type was '${stringifyType(operandType.type)}'.`
+              )
+            );
+            return {
+              errors: errors,
+            };
+          }
+          return {
+            errors: operandType.errors,
+            type: operandType.type,
+          };
+        }
       }
     case "field-access": {
       const operandType = getExprType(expr.data.left, scopeChain);
@@ -1150,7 +1169,7 @@ export function getExprType(
           errors = errors.concat(
             nodeTypeErr(
               expr,
-              `You cannot access the fields of this, as it is of type '${stringifyType(operandType.type)}', which has no fields.`
+              `You cannot access the fields of '${fmt.exprmax(expr.data.left)}', as it is of type '${stringifyType(operandType.type)}', which has no fields.`
             )
           );
           return {

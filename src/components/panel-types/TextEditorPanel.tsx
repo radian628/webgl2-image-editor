@@ -14,14 +14,22 @@ import {
   javascriptLanguage,
   typescriptLanguage,
 } from "@codemirror/lang-javascript";
-import { typescriptLanguageService } from "./text-editor-features/typescript";
-import ts from "typescript";
+import {
+  typescript,
+  typescriptLanguageService,
+} from "./text-editor-features/typescript";
+import type ts from "typescript";
 import { basicSetup } from "codemirror";
 import { ImageEditorDragState } from "../ImageEditorPanels";
 import { v4 } from "uuid";
 import "./TextEditorPanel.css";
 import { useDocumentation } from "./DocumentationPanel";
 import { glslLanguageService } from "./text-editor-features/glsl";
+import {
+  defaultEditorTheme,
+  defaultSyntaxHighlightTheme,
+} from "./text-editor-features/theme";
+import { syntaxHighlighting } from "@codemirror/language";
 
 export function TextEditorPanel(props: {
   data: PanelType<"text-editor">;
@@ -59,12 +67,14 @@ export function TextEditorPanel(props: {
     }
   }, [props.data.state, editorRef.current]);
 
-  function resetEditor(text: string) {
+  async function resetEditor(text: string) {
     if (editorRef.current) {
       editorRef.current.destroy();
     }
     const container = editorContainerRef.current;
     if (!container) return;
+
+    const ts = await typescript();
 
     const initState =
       props.data.state ??
@@ -73,7 +83,7 @@ export function TextEditorPanel(props: {
         extensions: [
           basicSetup,
           props.data.file?.path.endsWith(".ts")
-            ? typescriptLanguageService(
+            ? await typescriptLanguageService(
                 [props.data.file.path],
                 props.data.file.path,
                 props.data.file.fs,
@@ -81,7 +91,7 @@ export function TextEditorPanel(props: {
                 {
                   lib: [
                     "dom",
-                    "es5",
+                    "esnext",
                     "EvalboxDefs",
                     "components/iframe-runtime/EvalboxDefs",
                     "StaticallyInferredFiles",
@@ -89,6 +99,8 @@ export function TextEditorPanel(props: {
                   target: ts.ScriptTarget.ES2024,
                   strict: true,
                   module: ts.ModuleKind.ESNext,
+                  allowImportingTsExtensions: true,
+                  noEmit: true,
                 },
                 (docs) => {
                   setDocumentation({
@@ -108,7 +120,9 @@ export function TextEditorPanel(props: {
           keymap.of(defaultKeymap),
           keymap.of(searchKeymap),
           search(),
-          oneDark,
+          syntaxHighlighting(defaultSyntaxHighlightTheme),
+          defaultEditorTheme,
+          // oneDark,
           keymap.of([indentWithTab]),
           keymap.of([
             {
@@ -151,6 +165,7 @@ export function TextEditorPanel(props: {
 
     editorRef.current = view;
   }
+  console.log("please work thank you 2222sdjfhskjdfh");
 
   useEffect(() => {
     loadTextFromFile();

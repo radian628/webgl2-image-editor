@@ -4,6 +4,7 @@ import { parseGLSLWithoutPreprocessing } from "../../../glsl-analyzer/parser-com
 
 async function generateStaticallyInferredShaders(fs: FilesystemAdaptor) {
   let outstr = "";
+  let mapstr = "";
   async function traverseAndFindShaders(dir: string) {
     const listing = await fs.readDir(dir);
 
@@ -27,20 +28,38 @@ async function generateStaticallyInferredShaders(fs: FilesystemAdaptor) {
             tu.data.data.translationUnit
           );
 
-          outstr += `declare function loadShader<ST extends "vertex" | "fragment">(path: "${path}", type: ST): {
-              id: string,
-              shaderType: ST,
+          const uiosString = `
               uniforms: ${JSON.stringify(inputsOutputsAndUniforms.uniforms)}
               inputs: ${JSON.stringify(inputsOutputsAndUniforms.inputs)}
               outputs: ${JSON.stringify(inputsOutputsAndUniforms.outputs)}
-            };\n\n`;
+          `;
+
+          // outstr += `declare function loadShader<ST extends "vertex" | "fragment">(path: "${path}", type: ST): {
+          //     id: string,
+          //     shaderType: ST,
+          //     ${uiosString}
+          //   };\n\n`;
+
+          mapstr += `"${path}": { ${uiosString} },`;
         }
       }
     }
   }
 
   await traverseAndFindShaders("root");
-  return outstr;
+  return (
+    outstr +
+    `\n\ntype LoadShaderOverloadMap = { ${mapstr} };
+
+declare function loadShader<K extends keyof LoadShaderOverloadMap, ST extends "vertex" | "fragment">(
+  path: K,
+  shaderType: ST
+): {
+  id: string,
+  shaderType: ST,
+} & LoadShaderOverloadMap[K];
+`
+  );
 }
 
 export function watchForStaticallyInferredShaders(

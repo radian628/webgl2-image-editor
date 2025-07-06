@@ -1,4 +1,8 @@
 import { FilesystemAdaptor } from "../../filesystem/FilesystemAdaptor";
+import {
+  UIOption,
+  UIReturnType,
+} from "../../gl-abstraction-layer-lib/message-format";
 import { BufferFormat } from "../../pipeline-assembler/pipeline-format";
 
 export type GLPrimitive = {
@@ -140,6 +144,16 @@ export type GLMessageContents =
       wrapS: GLenum;
       wrapT: GLenum;
       id: string;
+    }
+  | {
+      type: "create-menu";
+      id: string;
+      menu: UIOption;
+    }
+  | {
+      type: "poll-menu";
+      id: string;
+      menu: UIOption;
     };
 
 export type GLMessageContentsType<T extends GLMessageContents["type"]> =
@@ -153,6 +167,11 @@ export type GLMessageType<T extends GLMessageContents["type"]> = {
 export type GLMessage = {
   contents: GLMessageContents;
   id: string;
+};
+
+export type MenuRef = {
+  id: string;
+  menu: UIOption;
 };
 
 export type GLMessageResponseContents<Msg extends GLMessage> =
@@ -180,7 +199,11 @@ export type GLMessageResponseContents<Msg extends GLMessage> =
             }
           : Msg extends GLMessageType<"create-texture">
             ? TextureRef
-            : undefined;
+            : Msg extends GLMessageType<"create-menu">
+              ? MenuRef
+              : Msg extends GLMessageType<"poll-menu">
+                ? UIReturnType<Msg["contents"]["menu"]>
+                : undefined;
 
 export type GLMessageResponse<Msg extends GLMessage> = {
   id: string;

@@ -25,4 +25,5 @@ declare global {
   const sendGLMessage: GLMessageClient["sendGLMessage"];
   const draw: GLMessageClient["draw"];
   const create8BitRGBATexture: GLMessageClient["create8BitRGBATexture"];
+  function loop(callback: (time: number) => any): () => void;
 }

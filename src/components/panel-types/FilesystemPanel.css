@@ -1,14 +1,27 @@
 .filesystem-panel {
-  .directory-button {
-    cursor: pointer;
-  }
-
   .directory-list {
     list-style: none;
     padding-left: 10px;
     margin-left: 10px;
-    border-left: 1px solid black;
+    border-left: 1px solid var(--foreground-color-3);
     margin-top: 0;
     margin-bottom: 0;
+  }
+
+  .directory-line {
+    display: flex;
+
+    .directory-button {
+      cursor: pointer;
+      flex-grow: 1;
+    }
+  }
+
+  .new-file-container {
+    visibility: hidden;
+  }
+
+  .directory-line:hover .new-file-container {
+    visibility: visible;
   }
 }
