@@ -23,7 +23,6 @@ export const PanelItem = (props: {
   data: PanelContentsItem;
   setData: (i: (i: PanelContentsItem) => PanelContentsItem) => void;
 }) => {
-  console.log(props);
   return props.data.type === "none" ? (
     <div className="centered-big-panel-selector">
       <PanelSelector showAll {...props}></PanelSelector>
@@ -87,7 +86,6 @@ export const Panel: PanelComponent<PanelContents> = (
           >
             <span
               onClick={() => {
-                console.log("fuck you");
                 props.setData((data) => ({
                   ...data,
                   openIndex: index,
@@ -98,7 +96,6 @@ export const Panel: PanelComponent<PanelContents> = (
             </span>
             <CloseButtonNoBackground
               onClick={() => {
-                console.log("asdasdasdasdasd");
                 props.setData((data) => ({
                   openIndex: Math.max(0, data.openIndex - 1),
                   items:

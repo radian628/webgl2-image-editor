@@ -134,16 +134,12 @@ function PanelLayoutItem<T>(props: {
           setPanels={(d) =>
             props.setPanels((panels) =>
               panels.map((p2, j) =>
-                j === i
+                j === i && p2.variant.type === "nested"
                   ? {
                       ...p2,
                       variant: {
                         type: "nested",
-                        subpanels: d(
-                          (p2.variant.type === "nested"
-                            ? p2.variant.subpanels
-                            : undefined)!
-                        ),
+                        subpanels: d(p2.variant.subpanels),
                       },
                     }
                   : p2
@@ -203,7 +199,7 @@ function PanelLayout<T>(props: {
 }
 
 function killSinglets<T>(data: PanelLayoutData<T>): PanelLayoutData<T> {
-  return data.map((d) =>
+  const deadSinglets = data.map((d) =>
     d.variant.type === "nested"
       ? d.variant.subpanels.length === 1
         ? lens(killSinglets(d.variant.subpanels)[0]).proportion.$(
@@ -218,6 +214,8 @@ function killSinglets<T>(data: PanelLayoutData<T>): PanelLayoutData<T> {
           }
       : d
   );
+  console.log("singlets dead", deadSinglets);
+  return deadSinglets;
 }
 
 export const PanelDragContext = createContext<{
