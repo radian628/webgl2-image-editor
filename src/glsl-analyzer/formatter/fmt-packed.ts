@@ -79,7 +79,6 @@ export namespace FormatGLSLPacked {
           };
           const left = expr(e.data.left, c2);
           const right = expr(e.data.right, { precedence: maxPrecedence });
-          console.log(prec, c2.precedence);
           return `${prec < c2.precedence ? `(${left})` : left}[${right}]`;
         }
 

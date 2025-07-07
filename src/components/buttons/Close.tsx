@@ -7,7 +7,13 @@ export function CloseButtonGeneric(props: {
   className: string;
 }) {
   return (
-    <button onClick={props.onClick} className={props.className}>
+    <button
+      onClick={(e) => {
+        props.onClick();
+        e.stopPropagation();
+      }}
+      className={props.className + " close-button"}
+    >
       <CloseIcon></CloseIcon>
     </button>
   );

@@ -12,22 +12,18 @@ import {
   CompletionContext,
 } from "@codemirror/autocomplete";
 import { EditorState, StateField } from "@codemirror/state";
-import { hoverTooltip, showTooltip, Tooltip } from "@codemirror/view";
+import type { Tooltip } from "@codemirror/view";
 import { parseGLSLWithoutPreprocessing } from "../../../glsl-analyzer/parser-combined";
 import { getInputsOutputsAndUniforms } from "../../../glsl-analyzer/get-inputs-outputs";
 import { watchForStaticallyInferredShaders } from "./statically-inferred-shaders";
-// import * as prettier from "prettier";
-// import * as prettierPluginTypescript from "prettier/plugins/typescript";
-// import * as prettierPluginEstree from "prettier/plugins/estree";
 import { JSX } from "react";
 import React from "react";
-// import TypescriptLibraries from "./typescript-libraries";
+import { hoverTooltip, showTooltip } from "@codemirror/view";
 
 let cachedTypescript: typeof import("typescript");
 export async function typescript() {
   if (cachedTypescript) return cachedTypescript;
   cachedTypescript = (await import("typescript")).default;
-  console.log("ts", cachedTypescript);
   return cachedTypescript;
 }
 
@@ -106,7 +102,6 @@ export async function typescriptLanguageService(
   });
 
   function loadFileSync(fileName: string) {
-    console.log("RESOLVED TO", fileName);
     if (tslibText[fileName]) {
       return tslibText[fileName];
     } else {

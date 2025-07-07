@@ -1,12 +1,13 @@
 import React, { useEffect, useRef } from "react";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import { EditorView, keymap } from "@codemirror/view";
 import { search, searchKeymap } from "@codemirror/search";
 import { oneDark } from "@codemirror/theme-one-dark";
 import "./GLSLEditor.css";
+import { EditorView } from "codemirror";
+import { keymap } from "@codemirror/view";
 
-export function GLSLEditor(props: {
+export async function GLSLEditor(props: {
   text: string;
   setText: (text: string) => void;
 }) {

@@ -111,7 +111,7 @@ export function TextEditorPanel(props: {
             : props.data.file?.path.endsWith(".vert") ||
                 props.data.file?.path.endsWith(".frag") ||
                 props.data.file?.path.endsWith(".glsl")
-              ? glslLanguageService({
+              ? await glslLanguageService({
                   fs: props.data.file.fs,
                   entryPoint: props.data.file.path,
                 })
@@ -165,7 +165,6 @@ export function TextEditorPanel(props: {
 
     editorRef.current = view;
   }
-  console.log("please work thank you 2222sdjfhskjdfh");
 
   useEffect(() => {
     loadTextFromFile();

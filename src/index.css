@@ -18,6 +18,7 @@
 
 body {
   background-color: var(--background-color);
+  color: var(--foreground-color);
   padding: 0;
   margin: 0;
   font-family: Arial, Helvetica, sans-serif;
@@ -25,25 +26,28 @@ body {
 
 :root {
   --background-color: #1d1d22;
-  --background-color-2: #444455;
-  --background-color-3: #666688;
-  --foreground-color: white;
-  --foreground-color-3: #9999aa;
+  --background-color-subtle: #262633;
+  --background-color-2: #383848;
+  --background-color-3: #585878;
+  --foreground-color: #ddddf6;
   --foreground-color-2: #ccccee;
-  --highlight-color: #8888ff;
+  --foreground-color-3: #9999aa;
+  --highlight-color: #ccccff;
   --border-color: #777799;
 
-  --keyword-color: red;
-  --variable-name-color: green;
+  --keyword-color: #9362ff;
+  --variable-name-color: #8bd4ff;
   --bool-color: orange;
-  --float-color: yellow;
-  --number-color: yellow;
+  --float-color: #e8e85f;
+  --number-color: #eaea6b;
   --literal-color: yellow;
   --string-literal-color: violet;
-  --int-color: blue;
-  --function-color: lime;
-  --property-color: cyan;
-  --type-name: lightblue;
+  --int-color: #68ffb1;
+  --function-color: #ea4e4e;
+  --property-color: #8bd4ff;
+  --type-name: #ef6fdb;
+
+  --error-color: #e73f3f;
 }
 
 button,

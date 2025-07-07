@@ -250,16 +250,6 @@ const ctxEvalboxDefs = await esbuild.context({
   plugins: [buildProgressPlugin("EVALBOX DEFS:"), rawDtsQueryParamPlugin],
 });
 
-// const ctxCodemirror = await esbuild.context({
-//   entryPoints: ["src/components/iframe-runtime/EvalboxDefsWrapper.ts"],
-//   outdir: "dist",
-//   bundle: true,
-//   minify: true,
-//   sourcemap: true,
-//   format: "esm",
-//   plugins: [buildProgressPlugin("EVALBOX DEFS:"), rawDtsQueryParamPlugin],
-// });
-
 console.log(await esbuild.analyzeMetafile((await ctx.rebuild()).metafile));
 
 const contexts = [ctx, ctxEvalbox, ctxTypescriptLibraries, ctxEvalboxDefs];

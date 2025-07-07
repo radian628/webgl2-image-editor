@@ -23,6 +23,7 @@ export const PanelItem = (props: {
   data: PanelContentsItem;
   setData: (i: (i: PanelContentsItem) => PanelContentsItem) => void;
 }) => {
+  console.log(props);
   return props.data.type === "none" ? (
     <div className="centered-big-panel-selector">
       <PanelSelector showAll {...props}></PanelSelector>
@@ -82,20 +83,33 @@ export const Panel: PanelComponent<PanelContents> = (
             className={
               index === props.data.openIndex ? "selected button" : "button"
             }
-            onClick={() => {
-              props.setData((data) => ({
-                ...data,
-                openIndex: index,
-              }));
-            }}
             key={i.id}
           >
-            {panelItemToName(i)}
+            <span
+              onClick={() => {
+                console.log("fuck you");
+                props.setData((data) => ({
+                  ...data,
+                  openIndex: index,
+                }));
+              }}
+            >
+              {panelItemToName(i)}
+            </span>
             <CloseButtonNoBackground
               onClick={() => {
+                console.log("asdasdasdasdasd");
                 props.setData((data) => ({
-                  openIndex: Math.min(0, data.openIndex - 1),
-                  items: data.items.filter((item, j) => j !== index),
+                  openIndex: Math.max(0, data.openIndex - 1),
+                  items:
+                    data.items.length === 1
+                      ? [
+                          {
+                            type: "none",
+                            id: v4(),
+                          },
+                        ]
+                      : data.items.filter((item, j) => j !== index),
                 }));
               }}
             ></CloseButtonNoBackground>

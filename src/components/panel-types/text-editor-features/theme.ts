@@ -42,6 +42,22 @@ export const defaultEditorTheme = EditorView.theme(
     ".cm-gutters": {
       ...defaultColorScheme,
     },
+
+    ".cm-activeLine": {
+      backgroundColor: "var(--background-color-subtle)",
+    },
+
+    ".cm-lintRange-error": {
+      backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="6" height="3">%3Cpath%20d%3D%22m0%202.5%20l2%20-1.5%20l1%200%20l2%201.5%20l1%200%22%20stroke%3D%22${encodeURIComponent(
+        getComputedStyle(document.body).getPropertyValue("--error-color")
+      )}%22%20fill%3D%22none%22%20stroke-width%3D%22.7%22%2F%3E</svg>')`,
+    },
+
+    ".cm-foldPlaceholder": {
+      backgroundColor: "var(--background-color-2)",
+      border: "1px solid var(--border-color)",
+      color: "var(--highlight-color)",
+    },
   },
   { dark: true }
 );

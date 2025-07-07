@@ -1,10 +1,3 @@
-import {
-  Decoration,
-  DecorationSet,
-  EditorView,
-  showTooltip,
-  Tooltip,
-} from "@codemirror/view";
 import { Extension, StateField } from "@codemirror/state";
 import { parseGLSLWithoutPreprocessing } from "../../../glsl-analyzer/parser-combined";
 import { mapAST } from "../../../glsl-analyzer/glsl-ast-utils";
@@ -27,8 +20,7 @@ import { linter } from "@codemirror/lint";
 import { styleTags, tags } from "@lezer/highlight";
 import { parser } from "./glsl-grammar.lezer";
 import { LRLanguage } from "@codemirror/language";
-
-const identifierMark = Decoration.mark({});
+import { showTooltip } from "@codemirror/view";
 
 const parserWithHighlight = parser.configure({
   props: [
@@ -41,12 +33,13 @@ const parserWithHighlight = parser.configure({
       PrecisionKeyword: tags.keyword,
       "VariableIdentifier!": tags.variableName,
       TypeSpecifierNonarray: tags.typeName,
-      Float: tags.number,
-      IntegerDecimal: tags.number,
-      IntegerOctal: tags.number,
-      IntegerHex: tags.number,
+      Float: tags.float,
+      IntegerDecimal: tags.integer,
+      IntegerOctal: tags.integer,
+      IntegerHex: tags.integer,
       BooleanExpression: tags.bool,
       "FunctionName!": tags.function(tags.variableName),
+      "FunctionIdentifier!": tags.function(tags.variableName),
     }),
   ],
 });
@@ -55,10 +48,10 @@ const glsl = LRLanguage.define({
   parser: parserWithHighlight,
 });
 
-export function glslLanguageService(ctx: {
+export async function glslLanguageService(ctx: {
   fs: FilesystemAdaptor;
   entryPoint: string;
-}): Extension {
+}): Promise<Extension> {
   const fs = createOverridableVirtualFilesystem(ctx.fs);
   const server = makeGLSLLanguageServer({
     fs,

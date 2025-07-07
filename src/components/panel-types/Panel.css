@@ -21,22 +21,36 @@
   li {
     padding: 5px;
     margin: 2px;
-    background-color: var(--background-color-2);
+    background-color: var(--background-color-subtle);
+
+    .close-button {
+      visibility: hidden;
+      margin-left: 5px;
+      margin-right: 0;
+    }
+
+    .close-button:hover {
+      background-color: transparent;
+      outline: 1px dashed var(--highlight-color);
+      border-radius: 3px;
+    }
   }
 
   li:hover {
-    background-color: var(--background-color-3);
+    background-color: var(--background-color-2);
+
+    .close-button {
+      visibility: visible;
+    }
   }
 
   li.selected {
-    background-color: var(--foreground-color-2);
-    color: var(--background-color);
+    background-color: var(--background-color-3);
   }
 }
 
 .panel-root {
   background-color: var(--background-color);
-  color: white;
   height: 100%;
   display: flex;
   flex-direction: column;
