@@ -1,8 +1,9 @@
 import { FilesystemAdaptor } from "../../filesystem/FilesystemAdaptor";
 import {
+  getGLMessageUIDefaultValue,
   UIOption,
   UIReturnType,
-} from "../../gl-abstraction-layer-lib/message-format";
+} from "../GLMessageUI";
 import { BufferFormat } from "../../pipeline-assembler/pipeline-format";
 
 export type GLPrimitive = {
@@ -34,6 +35,10 @@ export type GLPrimitiveToNumber<G extends GLPrimitive> = G["count"] extends 1
 export type UniformTypeValue<G extends UniformType> = G extends GLPrimitive
   ? GLPrimitiveToNumber<G>
   : TextureRef;
+
+export type UniformsToValues<G extends Record<string, UniformType>> = {
+  [K in keyof G]: UniformTypeValue<G[K]>;
+};
 
 function glp(count: 1 | 2 | 3 | 4, type: "float" | "int" | "uint") {
   return { count, type };
@@ -153,8 +158,14 @@ export type GLMessageContents =
   | {
       type: "poll-menu";
       id: string;
-      menu: UIOption;
-    };
+      menu: MenuRef;
+    }
+  | {
+      type: "resize";
+      width: number;
+      height: number;
+    }
+  | { type: "get-window-size" };
 
 export type GLMessageContentsType<T extends GLMessageContents["type"]> =
   GLMessageContents & { type: T };
@@ -202,8 +213,10 @@ export type GLMessageResponseContents<Msg extends GLMessage> =
             : Msg extends GLMessageType<"create-menu">
               ? MenuRef
               : Msg extends GLMessageType<"poll-menu">
-                ? UIReturnType<Msg["contents"]["menu"]>
-                : undefined;
+                ? UIReturnType<Msg["contents"]["menu"]["menu"]>
+                : Msg extends GLMessageType<"get-window-size">
+                  ? { width: number; height: number }
+                  : undefined;
 
 export type GLMessageResponse<Msg extends GLMessage> = {
   id: string;
@@ -216,8 +229,10 @@ export type GLMessageContext = {
   shaders: Map<string, WebGLShader>;
   programs: Map<string, WebGLProgram>;
   textures: Map<string, WebGLTexture>;
+  menus: Map<string, { spec: UIOption; value: any }>;
   fs: FilesystemAdaptor;
   canvas: HTMLCanvasElement;
+  container: { current: HTMLElement | null };
 };
 
 export type InterleavedBufferSpec = {
@@ -574,6 +589,47 @@ export async function executeGLMessage<Msg extends GLMessage>(
         height: { pixels: msg.height },
         dimensionality: "2D",
         format: "float",
+      },
+    };
+  } else if (msg.type === "create-menu") {
+    context.menus.set(msg.id, {
+      spec: msg.menu,
+      value: getGLMessageUIDefaultValue(msg.menu),
+    });
+    return {
+      id: msgwrapper.id,
+      // @ts-expect-error
+      content: {
+        id: msg.id,
+        menu: msg.menu,
+      },
+    };
+  } else if (msg.type === "poll-menu") {
+    const currentValue = context.menus.get(msg.id)?.value;
+    return {
+      id: msgwrapper.id,
+      content: currentValue,
+    };
+  } else if (msg.type === "resize") {
+    if (context.canvas.width !== msg.width) context.canvas.width = msg.width;
+    if (context.canvas.height !== msg.height)
+      context.canvas.height = msg.height;
+    // @ts-expect-error
+    return {
+      id: msgwrapper.id,
+    };
+  } else if (msg.type === "get-window-size") {
+    const containerDims =
+      context.container.current?.getBoundingClientRect() ?? {
+        width: 1,
+        height: 1,
+      };
+    return {
+      id: msgwrapper.id,
+      // @ts-expect-error
+      content: {
+        width: Math.ceil(containerDims.width),
+        height: Math.ceil(containerDims.height),
       },
     };
   }

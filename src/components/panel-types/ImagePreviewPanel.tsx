@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { createRef, useEffect, useRef, useState } from "react";
 import Evalbox from "../iframe-runtime/evalbox.html?raw";
 import { PanelContentsItem, PanelType } from "./PanelSelector";
 import {
@@ -8,6 +8,8 @@ import {
 } from "../iframe-runtime/GLMessageProtocol";
 import * as esbuild from "esbuild-wasm";
 import { v4 } from "uuid";
+import { GLMessageUIField, UIOption } from "../GLMessageUI";
+import "./ImagePreviewPanel.css";
 
 function jsToDataURI(js: string) {
   return `data:application/javascript;base64,${btoa(js)}`;
@@ -83,6 +85,28 @@ export function ImagePreviewPanel(props: {
     return file.fs.watchFile(file.path, cb);
   }, [props.data.file]);
 
+  const [menuValues, setMenuValues] = useState<
+    Record<
+      string,
+      {
+        spec: UIOption;
+        value: any;
+      }
+    >
+  >({});
+  const menus = useRef(new Map<string, { spec: UIOption; value: any }>());
+  const containerRef = createRef<HTMLDivElement | null>();
+
+  useEffect(() => {
+    console.log("MENU VALUES CHANGED", menuValues);
+    for (const [k, v] of menus.current) {
+      menus.current.delete(k);
+    }
+    for (const [k, v] of Object.entries(menuValues)) {
+      menus.current.set(k, v);
+    }
+  }, [menuValues]);
+
   useEffect(() => {
     if (!file || !props.data.file || !evalboxGLWrapper) return;
     const evalbox = evalboxRef.current;
@@ -139,6 +163,7 @@ export function ImagePreviewPanel(props: {
       const shaders = new Map<string, WebGLShader>();
       const programs = new Map<string, WebGLProgram>();
       const textures = new Map<string, WebGLTexture>();
+      setMenuValues((values) => ({}));
 
       evalbox.setAttribute("sandbox", "allow-scripts");
       evalbox.setAttribute("origin", window.location.origin);
@@ -150,6 +175,8 @@ export function ImagePreviewPanel(props: {
       evalbox.style.top = "0";
       evalbox.style.left = "0";
       document.body.appendChild(evalbox);
+
+      const container = containerRef.current;
 
       const messageListener = (e: MessageEvent) => {
         const canvas = canvasRef.current;
@@ -165,8 +192,10 @@ export function ImagePreviewPanel(props: {
           shaders,
           programs,
           textures,
+          menus: menus.current,
           fs: props.data.file!.fs,
           canvas,
+          container: { current: container },
         };
 
         (async () => {
@@ -174,6 +203,12 @@ export function ImagePreviewPanel(props: {
             await executeGLMessage(e.data as GLMessage, context),
             "*"
           );
+          const glm = e.data as GLMessage;
+          if (glm && glm.contents && glm.contents.type === "create-menu")
+            setMenuValues((values) => ({
+              ...Object.fromEntries(menus.current.entries()),
+              ...values,
+            }));
         })();
       };
 
@@ -186,9 +221,25 @@ export function ImagePreviewPanel(props: {
     }
   }, [file, props.data.file, evalboxGLWrapper]);
 
+  useEffect(() => {
+    console.log("CONTAINERREF", containerRef);
+  });
+
   return (
-    <div className="image-preview-panel-container">
+    <div className="image-preview-panel-container" ref={containerRef}>
       <canvas ref={canvasRef}></canvas>
+      {Object.entries(menuValues).map(([k, v]) => (
+        <GLMessageUIField
+          value={v.value}
+          setValue={(nv) =>
+            setMenuValues((values) => ({
+              ...values,
+              [k]: { spec: values[k].spec, value: nv(values[k].value) },
+            }))
+          }
+          template={v.spec}
+        ></GLMessageUIField>
+      ))}
     </div>
   );
 }

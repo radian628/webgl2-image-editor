@@ -11,9 +11,11 @@ import {
   GLPrimitiveToNumber,
   UniformTypeValue,
   TextureRef,
+  MenuRef,
 } from "./GLMessageProtocol";
 import { parseGLSLWithoutPreprocessing } from "../../glsl-analyzer/parser-combined";
 import { getInputsOutputsAndUniforms } from "../../glsl-analyzer/get-inputs-outputs";
+import { UIOption, UIReturnType } from "../GLMessageUI";
 
 export function createGLMessageClient(
   send: <Msg extends GLMessage>(msg: Msg) => Promise<GLMessageResponse<Msg>>
@@ -172,6 +174,57 @@ export function createGLMessageClient(
       });
 
       return shader.content;
+    },
+    async createMenu<UI extends UIOption>(
+      menu: UI
+    ): Promise<{
+      id: string;
+      menu: UI;
+    }> {
+      const res = await send({
+        id: v4(),
+        contents: {
+          type: "create-menu",
+          menu,
+          id: v4(),
+        },
+      });
+
+      return res.content as any;
+    },
+    async pollMenu<UI extends UIOption>(
+      menu: MenuRef & { menu: UI }
+    ): Promise<UIReturnType<UI>> {
+      const res = await send({
+        id: v4(),
+        contents: {
+          type: "poll-menu",
+          id: menu.id,
+          menu,
+        },
+      });
+
+      return res.content;
+    },
+    async getWindowSize() {
+      const res = await send({
+        id: v4(),
+        contents: {
+          type: "get-window-size",
+        },
+      });
+
+      return res.content;
+    },
+    async resize(width: number, height: number) {
+      await send({
+        id: v4(),
+        contents: {
+          type: "resize",
+          width,
+          height,
+        },
+      });
     },
   };
 }

@@ -16,7 +16,7 @@ declare module "*?raw" {
 }
 
 declare module "*?dtstext" {
-  const src: string;
+  const src: VirtualFilesystemTree;
   export default src;
 }
 

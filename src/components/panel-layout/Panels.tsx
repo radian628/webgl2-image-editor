@@ -28,7 +28,7 @@ export type PanelLayoutData<T> = PanelLayoutDataItem<T>[];
 
 export type PanelComponentProps<T> = {
   data: T;
-  setData: (d: (d: T) => T) => void;
+  setData: (d: (d: T) => T | undefined) => void;
   panels: PanelLayoutData<T>;
   setPanels: (f: (p: PanelLayoutData<T>) => PanelLayoutData<T>) => void;
   index: number;
@@ -36,6 +36,12 @@ export type PanelComponentProps<T> = {
 };
 
 export type PanelComponent<T> = (props: PanelComponentProps<T>) => JSX.Element;
+
+function renormalizeProportions<T>(items: PanelLayoutDataItem<T>[]) {
+  const proportionSum = items.reduce((p, c) => p + c.proportion, 0);
+
+  return items.map((i) => ({ ...i, proportion: i.proportion / proportionSum }));
+}
 
 function PanelLayoutItem<T>(props: {
   panels: PanelLayoutData<T>;
@@ -56,6 +62,13 @@ function PanelLayoutItem<T>(props: {
     (props.vertical ? rootRect?.height : rootRect?.width) ?? 100;
 
   useEffect(() => {
+    if (isDragging) {
+      document.body.style.userSelect = "none";
+      document.getSelection()?.removeAllRanges();
+    } else {
+      document.body.style.userSelect = "";
+    }
+
     if (isDragging) {
       const mouseupListener = (e: MouseEvent) => {
         setIsDragging(false);
@@ -114,16 +127,24 @@ function PanelLayoutItem<T>(props: {
           data={p.variant.data}
           setData={(d) =>
             props.setPanels((panels) =>
-              panels.map((p2, j) =>
-                j === i && p2.variant.type === "data"
-                  ? {
-                      ...p2,
-                      variant: {
-                        ...p2.variant,
-                        data: d(p2.variant.data),
+              renormalizeProportions(
+                panels.flatMap((p2, j) => {
+                  if (j === i && p2.variant.type === "data") {
+                    const newData = d(p2.variant.data);
+                    if (!newData) return [];
+                    return [
+                      {
+                        ...p2,
+                        variant: {
+                          ...p2.variant,
+                          data: newData,
+                        },
                       },
-                    }
-                  : p2
+                    ];
+                  } else {
+                    return [p2];
+                  }
+                })
               )
             )
           }
@@ -214,7 +235,6 @@ function killSinglets<T>(data: PanelLayoutData<T>): PanelLayoutData<T> {
           }
       : d
   );
-  console.log("singlets dead", deadSinglets);
   return deadSinglets;
 }
 
@@ -259,8 +279,11 @@ export function RootPanelLayout<T, Drag>(props: {
   useEffect(() => {
     if (dragItem) {
       document.body.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+      document.getSelection()?.removeAllRanges();
     } else {
       document.body.style.cursor = "default";
+      document.body.style.userSelect = "";
     }
 
     if (dragGhostRef.current) {

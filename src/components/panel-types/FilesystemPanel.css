@@ -8,6 +8,10 @@
     margin-bottom: 0;
   }
 
+  .directory-root {
+    margin-left: 10px;
+  }
+
   .directory-line {
     display: flex;
 
@@ -23,5 +27,13 @@
 
   .directory-line:hover .new-file-container {
     visibility: visible;
+  }
+
+  .file-root {
+    cursor: grab;
+  }
+
+  .file-root:hover {
+    background-color: var(--background-color-2);
   }
 }

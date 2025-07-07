@@ -1,3 +1,4 @@
+import { ui } from "./EvalboxUIWrapper";
 import { createGLMessageClient } from "./GLMessageClient";
 
 const client = createGLMessageClient((msg) => {
@@ -14,6 +15,7 @@ const client = createGLMessageClient((msg) => {
 declare global {
   interface Window {
     loopCancellers: (() => void)[];
+    ui: typeof ui;
   }
 }
 
@@ -32,6 +34,8 @@ window.loop = function (callback: (time: number) => void) {
   window.loopCancellers.push(cancel);
   return cancel;
 };
+
+window.ui = ui;
 
 for (const [k, v] of Object.entries(client)) {
   // @ts-expect-error

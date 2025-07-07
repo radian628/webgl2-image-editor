@@ -50,6 +50,25 @@ body {
   --error-color: #e73f3f;
 }
 
+input,
+.input {
+  background-color: var(--background-color-2);
+  border: 1px solid var(--border-color);
+  color: var(--color);
+  margin: 3px;
+}
+
+input:focus,
+.input:focus {
+  outline: 2px solid var(--highlight-color);
+}
+
+input[type="number"] {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
+}
+
 button,
 .button {
   background-color: var(--background-color-2);

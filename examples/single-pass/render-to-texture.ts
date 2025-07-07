@@ -22,31 +22,36 @@ const rendertex = await create8BitRGBATexture(undefined, 256, 256);
 const texprogram = await linkProgram(vshader, fshader);
 const circleprogram = await linkProgram(vshader, circleshader);
 
-await draw(
-  circleprogram,
-  6,
-  {
-    pos: { buffer, inputName: "attr" },
-  },
-  {
-    col: rendertex,
-  },
-  {}
-);
+const menu = await createMenu({ type: "number", count: 1, defaultValue: 0.5 });
 
-await draw(
-  texprogram,
-  6,
-  {
-    pos: { buffer, inputName: "attr" },
-  },
-  {
-    col: null,
-  },
-  {
-    blue: 0.5,
-    tex: rendertex,
-  }
-);
+loop(async () => {
+  const menuValue = await pollMenu(menu);
+  await draw(
+    circleprogram,
+    6,
+    {
+      pos: { buffer, inputName: "attr" },
+    },
+    {
+      col: rendertex,
+    },
+    {}
+  );
+
+  await draw(
+    texprogram,
+    6,
+    {
+      pos: { buffer, inputName: "attr" },
+    },
+    {
+      col: null,
+    },
+    {
+      blue: menuValue,
+      tex: rendertex,
+    }
+  );
+});
 
 export {};

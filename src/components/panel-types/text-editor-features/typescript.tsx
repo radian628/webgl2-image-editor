@@ -1,5 +1,8 @@
 import type ts from "typescript";
-import { FilesystemAdaptor } from "../../../filesystem/FilesystemAdaptor";
+import {
+  FilesystemAdaptor,
+  VirtualFilesystemTree,
+} from "../../../filesystem/FilesystemAdaptor";
 import { Diagnostic, linter } from "@codemirror/lint";
 import {
   javascript,
@@ -70,7 +73,26 @@ export async function typescriptLanguageService(
   }
 
   const evalboxdefsStr: string = "./EvalboxDefsWrapper.js";
-  const EvalboxDefs = (await import(evalboxdefsStr)).default;
+  const EvalboxDefs: VirtualFilesystemTree = (await import(evalboxdefsStr))
+    .default;
+  console.log(EvalboxDefs);
+
+  const evalboxDefs: Record<string, string> = {};
+
+  async function unwrapEvalboxDefs(vfs: VirtualFilesystemTree, path: string) {
+    if (vfs.type === "dir") {
+      for (const [k, v] of vfs.contents) {
+        await unwrapEvalboxDefs(v, `${path}/${k}`);
+      }
+    } else {
+      console.log(path);
+      evalboxDefs[path] = await vfs.contents.text();
+    }
+  }
+
+  await unwrapEvalboxDefs(EvalboxDefs, "@internal");
+
+  // console.log("EVALBOX DEFS", EvalboxDefs.keys());
 
   const files: ts.MapLike<{ version: number }> = {};
 
@@ -101,14 +123,30 @@ export async function typescriptLanguageService(
     files["@internal/StaticallyInferredFiles.d.ts"].version++;
   });
 
+  console.log(evalboxDefs);
+
+  options = {
+    ...options,
+    lib: [
+      ...(options.lib ?? []),
+      ...Object.keys(evalboxDefs).map((s) => s.replace("@internal/", "")),
+    ],
+  };
+
+  console.log(options);
+
   function loadFileSync(fileName: string) {
     if (tslibText[fileName]) {
       return tslibText[fileName];
-    } else {
+    } else if (evalboxDefs[fileName]) {
+      // console.log("got from evalbox defs", fileName);
+      // console.log(evalboxDefs[fileName]);
+      return evalboxDefs[fileName];
     }
+    // if (fileName.startsWith("@internal")) console.log(fileName);
     if (fileName === entryPoint) return unsavedWork ?? snapshots.get(fileName);
     if (fileName === "@internal/EvalboxDefs.d.ts") {
-      return EvalboxDefs; //+ `export {clear} "components/iframe-runtime/EvalboxDefs";`;
+      return ""; //EvalboxDefs; //+ `export {clear} "components/iframe-runtime/EvalboxDefs";`;
       // `\ndeclare global { export { clear } from "components/iframe-runtime/EvalboxDefs"; } export {};`
     } else if (
       fileName === "@internal/components/iframe-runtime/EvalboxDefs.ts"
