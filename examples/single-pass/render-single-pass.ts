@@ -1,4 +1,4 @@
-const simpleQuadBuffer = await createBufferFromArray({
+const simpleQuadBuffer = await g.createBufferFromArray({
   array: [-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 1.0, -1.0],
   count: 2,
   encoding: "float",
@@ -19,12 +19,12 @@ type Test1 = Awaited<ReturnType<typeof loadShader>>;
 export async function renderSimpleQuad(
   fragmentShaderLink: ValidFragmentShader
 ) {
-  const vshader = await loadShader("root/blit.vert", "vertex");
-  const fshader = await loadShader(fragmentShaderLink, "fragment");
+  const vshader = await g.loadShader("root/blit.vert", "vertex");
+  const fshader = await g.loadShader(fragmentShaderLink, "fragment");
 
-  const prog = await linkProgram(vshader, fshader);
+  const prog = await g.linkProgram(vshader, fshader);
 
-  await draw(
+  await g.draw(
     prog,
     6,
     {

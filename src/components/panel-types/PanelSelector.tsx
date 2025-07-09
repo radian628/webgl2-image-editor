@@ -9,6 +9,25 @@ import { EditorState } from "@codemirror/state";
 import { v4 } from "uuid";
 import Sample from "../../../sample.ts?raw";
 import VFS from "../../../examples/single-pass?vfs";
+import FFTJS from "../../../node_modules/fft.js?vfs";
+
+function createDefaultVFSTree() {
+  const nodeModules: VirtualFilesystemTree & { type: "dir" } = {
+    name: "node_modules",
+    contents: new Map(),
+    type: "dir",
+  };
+
+  nodeModules.contents.set("fft.js", FFTJS);
+
+  if (VFS.type === "dir") {
+    VFS.contents.set("node_modules", nodeModules);
+  }
+
+  return VFS;
+}
+
+const defaultVFSTree = createDefaultVFSTree();
 
 type FileReference = {
   path: string;
@@ -88,7 +107,10 @@ export function PanelSelector(props: {
             props.setData((data) => ({
               type: "filesystem",
               id: v4(),
-              adaptor: createVirtualFilesystem(VFS) /* createVirtualFilesystem({
+              adaptor:
+                createVirtualFilesystem(
+                  defaultVFSTree
+                ) /* createVirtualFilesystem({
                 type: "dir",
                 name: "root",
                 contents: new Map([

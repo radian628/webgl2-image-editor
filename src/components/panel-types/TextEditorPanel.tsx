@@ -93,15 +93,20 @@ export function TextEditorPanel(props: {
                     "dom",
                     "esnext",
                     "EvalboxDefs",
-                    // "components/iframe-runtime/EvalboxDefs",
-                    // "src/components/iframe-runtime/EvalboxDefs",
+                    "src/components/iframe-runtime/EvalboxDefs",
                     "StaticallyInferredFiles",
                   ],
                   target: ts.ScriptTarget.ES2024,
                   strict: true,
                   module: ts.ModuleKind.ESNext,
+                  esModuleInterop: true,
+                  baseUrl: "root/",
+                  paths: {
+                    "libs/*": ["node_modules/*"],
+                  },
                   allowImportingTsExtensions: true,
                   noEmit: true,
+                  jsx: ts.JsxEmit.React,
                 },
                 (docs) => {
                   setDocumentation({

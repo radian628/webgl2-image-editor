@@ -9,7 +9,7 @@ uniform vec2 center;
 uniform float iterations;
 
 void main() {
-  vec2 c = (pos - center) * zoom;
+  vec2 c = pos * zoom - center;
   vec2 z = vec2(0);
 
   bool escaped = false;

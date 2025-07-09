@@ -103,7 +103,10 @@ const rawDtsQueryParamPlugin: esbuild.Plugin = {
       const start = Date.now();
       const options: ts.CompilerOptions = {
         declaration: true,
+        emitDeclarationOnly: true,
         moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        jsx: ts.JsxEmit.React,
+        lib: ["ESNext", "DOM"],
       };
 
       const createdFiles = new Map<string, string>();
@@ -115,28 +118,29 @@ const rawDtsQueryParamPlugin: esbuild.Plugin = {
 
         const filesToWatch: string[] = [];
 
-        // const oldReadFile = host.readFile.bind(host);
-        // host.readFile = (...args) => {
-        //   filesToWatch.push(args[0]);
-        //   return oldReadFile(...args);
-        // };
-        // host.writeFile = (fileName, text) => {
-        //   console.log("filename", fileName);
-        //   createdFiles.set(path.relative(__dirname, fileName), text);
-        // };
+        const oldReadFile = host.readFile.bind(host);
+        host.readFile = (...args) => {
+          filesToWatch.push(args[0]);
+          return oldReadFile(...args);
+        };
+        host.writeFile = (fileName, text) => {
+          createdFiles.set(path.relative(__dirname, fileName), text);
+        };
 
-        console.log("FILENAME", filename);
+        const d: any[] = [];
 
         const program = ts.createProgram(
           [filename],
           {
             ...options,
           },
-          host
+          host,
+          undefined,
+          d
         );
 
         const result = program.emit();
-        console.log(result);
+        console.log(result, d);
 
         const vfs = buildVFSTreeFromStrings(createdFiles);
 
@@ -175,7 +179,7 @@ async function buildVFSTree(
     return `{
   type: "file",
   name: ${JSON.stringify(link.split("/").at(-1))},
-  contents: new Blob([${JSON.stringify((await fs.readFile(link)).toString())}])   
+  contents: new Blob([new Uint8Array([${Array.from(await fs.readFile(link)).join(",")}])])   
 }`;
   }
 }
@@ -310,6 +314,22 @@ function buildProgressPlugin(name: string): esbuild.Plugin {
         assets: {
           from: ["./node_modules/esbuild-wasm/esbuild.wasm"],
           to: "./dist",
+        },
+        watch: true,
+      }),
+      copy({
+        resolveFrom: "cwd",
+        assets: {
+          from: ["./node_modules/@ffmpeg/core/dist/esm/*"],
+          to: "./dist/ffmpeg",
+        },
+        watch: true,
+      }),
+      copy({
+        resolveFrom: "cwd",
+        assets: {
+          from: ["./node_modules/@ffmpeg/ffmpeg/dist/esm/*.js"],
+          to: "./dist/ffmpeg",
         },
         watch: true,
       }),

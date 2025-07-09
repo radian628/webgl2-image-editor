@@ -5,6 +5,7 @@ import {
   UIReturnType,
 } from "../GLMessageUI";
 import { BufferFormat } from "../../pipeline-assembler/pipeline-format";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
 
 export type GLPrimitive = {
   count: 1 | 2 | 3 | 4;
@@ -165,7 +166,13 @@ export type GLMessageContents =
       width: number;
       height: number;
     }
-  | { type: "get-window-size" };
+  | { type: "get-window-size" }
+  | { type: "get-pan-and-zoom-bounds" }
+  | { type: "reset-encoder" }
+  // TODO: maybe make it able to render from other targets
+  | { type: "add-frame" }
+  | { type: "render-video"; filename: string }
+  | { type: "read-file"; filename: string };
 
 export type GLMessageContentsType<T extends GLMessageContents["type"]> =
   GLMessageContents & { type: T };
@@ -216,11 +223,19 @@ export type GLMessageResponseContents<Msg extends GLMessage> =
                 ? UIReturnType<Msg["contents"]["menu"]["menu"]>
                 : Msg extends GLMessageType<"get-window-size">
                   ? { width: number; height: number }
-                  : undefined;
+                  : Msg extends GLMessageType<"get-pan-and-zoom-bounds">
+                    ? {
+                        bottomLeft: [number, number];
+                        topRight: [number, number];
+                      }
+                    : Msg extends GLMessageType<"read-file">
+                      ? { file: Blob | undefined }
+                      : undefined;
 
 export type GLMessageResponse<Msg extends GLMessage> = {
   id: string;
   content: GLMessageResponseContents<Msg>;
+  timestamp: number;
 };
 
 export type GLMessageContext = {
@@ -233,6 +248,14 @@ export type GLMessageContext = {
   fs: FilesystemAdaptor;
   canvas: HTMLCanvasElement;
   container: { current: HTMLElement | null };
+  zoomPan: {
+    current: {
+      bottomLeft: [number, number];
+      topRight: [number, number];
+    };
+  };
+  getffmpeg: () => Promise<FFmpeg>;
+  ffmpegFrameCount: { current: number };
 };
 
 export type InterleavedBufferSpec = {
@@ -371,6 +394,7 @@ export async function executeGLMessage<Msg extends GLMessage>(
     // @ts-expect-error
     return {
       id: msgwrapper.id,
+      timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "create-buffer") {
     if (msg.source.type === "array") {
@@ -381,6 +405,7 @@ export async function executeGLMessage<Msg extends GLMessage>(
       // @ts-expect-error
       content: { spec: msg.source.spec, id: msg.id },
       id: msgwrapper.id,
+      timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "create-shader") {
     const shader = gl.createShader(
@@ -402,6 +427,7 @@ export async function executeGLMessage<Msg extends GLMessage>(
         id: msg.id,
       },
       id: msgwrapper.id,
+      timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "create-program") {
     const program = gl.createProgram();
@@ -424,6 +450,7 @@ export async function executeGLMessage<Msg extends GLMessage>(
         id: msg.id,
       },
       id: msgwrapper.id,
+      timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "draw") {
     const program = context.programs.get(msg.program.id)!;
@@ -551,6 +578,7 @@ export async function executeGLMessage<Msg extends GLMessage>(
     // @ts-expect-error
     return {
       id: msgwrapper.id,
+      timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "load-file") {
     const file = await context.fs.readFile(msg.path);
@@ -560,6 +588,7 @@ export async function executeGLMessage<Msg extends GLMessage>(
       content: {
         file,
       },
+      timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "create-texture") {
     const tex = gl.createTexture();
@@ -590,6 +619,7 @@ export async function executeGLMessage<Msg extends GLMessage>(
         dimensionality: "2D",
         format: "float",
       },
+      timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "create-menu") {
     context.menus.set(msg.id, {
@@ -603,12 +633,14 @@ export async function executeGLMessage<Msg extends GLMessage>(
         id: msg.id,
         menu: msg.menu,
       },
+      timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "poll-menu") {
     const currentValue = context.menus.get(msg.id)?.value;
     return {
       id: msgwrapper.id,
       content: currentValue,
+      timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "resize") {
     if (context.canvas.width !== msg.width) context.canvas.width = msg.width;
@@ -617,6 +649,7 @@ export async function executeGLMessage<Msg extends GLMessage>(
     // @ts-expect-error
     return {
       id: msgwrapper.id,
+      timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "get-window-size") {
     const containerDims =
@@ -631,9 +664,110 @@ export async function executeGLMessage<Msg extends GLMessage>(
         width: Math.ceil(containerDims.width),
         height: Math.ceil(containerDims.height),
       },
+      timestamp: performance.now() - performance.timeOrigin,
+    };
+  } else if (msg.type === "get-pan-and-zoom-bounds") {
+    return {
+      id: msgwrapper.id,
+      // @ts-expect-error
+      content: context.zoomPan.current,
+      timestamp: performance.now() - performance.timeOrigin,
+    };
+  } else if (msg.type === "reset-encoder") {
+    const ffmpeg = await context.getffmpeg();
+
+    // delete all files in ffmpeg
+    const files = await ffmpeg.listDir("/");
+    await Promise.all(
+      files.map(async (f) =>
+        f.isDir ? undefined : await ffmpeg.deleteFile(f.name)
+      )
+    );
+    context.ffmpegFrameCount.current = 0;
+    return {
+      id: msgwrapper.id,
+      // @ts-expect-error
+      content: undefined,
+      timestamp: performance.now() - performance.timeOrigin,
+    };
+  } else if (msg.type === "add-frame") {
+    const ffmpeg = await context.getffmpeg();
+
+    context.ffmpegFrameCount.current++;
+
+    const filenum = context.ffmpegFrameCount.current.toString();
+
+    const filename = filenum.padStart(20, "0") + ".png";
+    const png = context.canvas.toBlob(async (blob) => {
+      if (!blob) {
+        window.alert("Failed to extract canvas data.");
+      }
+      await ffmpeg.writeFile(
+        filename,
+        new Uint8Array(await blob!.arrayBuffer())
+      );
+    });
+
+    return {
+      id: msgwrapper.id,
+      // @ts-expect-error
+      content: undefined,
+      timestamp: performance.now() - performance.timeOrigin,
+    };
+  } else if (msg.type === "render-video") {
+    const ffmpeg = await context.getffmpeg();
+
+    ffmpeg.on("log", ({ type, message }) => {
+      console.log(type, message);
+    });
+    ffmpeg.on("progress", (p) => {
+      console.log(p);
+    });
+
+    ffmpeg.exec([
+      "-r",
+      "30",
+      "-pattern_type",
+      "glob",
+      "-pix_fmt",
+      "rgba",
+      "-i",
+      "*.png",
+      "-vcodec",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "test.mp4",
+    ]);
+
+    download(new Blob([await ffmpeg.readFile("test.mp4")]), msg.filename);
+
+    return {
+      id: msgwrapper.id,
+      // @ts-expect-error
+      content: undefined,
+      timestamp: performance.now() - performance.timeOrigin,
+    };
+  } else if (msg.type === "read-file") {
+    const file = await context.fs.readFile(msg.filename);
+    return {
+      id: msgwrapper.id,
+      timestamp: performance.now() - performance.timeOrigin,
+      // @ts-expect-error
+      content: { file },
     };
   }
 
   // @ts-expect-error
   return;
+}
+
+function download(file: Blob, filename: string) {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }

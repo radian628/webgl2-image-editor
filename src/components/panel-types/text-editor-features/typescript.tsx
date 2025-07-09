@@ -75,7 +75,7 @@ export async function typescriptLanguageService(
   const evalboxdefsStr: string = "./EvalboxDefsWrapper.js";
   const EvalboxDefs: VirtualFilesystemTree = (await import(evalboxdefsStr))
     .default;
-  console.log(EvalboxDefs);
+  // console.log(EvalboxDefs);
 
   const evalboxDefs: Record<string, string> = {};
 
@@ -85,7 +85,7 @@ export async function typescriptLanguageService(
         await unwrapEvalboxDefs(v, `${path}/${k}`);
       }
     } else {
-      console.log(path);
+      // console.log(path);
       evalboxDefs[path] = await vfs.contents.text();
     }
   }
@@ -127,20 +127,27 @@ export async function typescriptLanguageService(
 
   options = {
     ...options,
-    lib: [
-      ...(options.lib ?? []),
-      ...Object.keys(evalboxDefs).map((s) => s.replace("@internal/", "")),
-    ],
+    // lib: [
+    //   ...(options.lib ?? []),
+    //   ...Object.keys(evalboxDefs).map((s) => s.replace("@internal/", "")),
+    // ],
   };
 
   console.log(options);
 
   function loadFileSync(fileName: string) {
+    fileName = fileName.replace(/^root\/\@internal/g, "@internal");
     if (tslibText[fileName]) {
       return tslibText[fileName];
     } else if (evalboxDefs[fileName]) {
       // console.log("got from evalbox defs", fileName);
       // console.log(evalboxDefs[fileName]);
+      // console.log(
+      //   "FOUND IN EVALBOX DEFS",
+      //   fileName,
+      //   "\n",
+      //   evalboxDefs[fileName]
+      // );
       return evalboxDefs[fileName];
     }
     // if (fileName.startsWith("@internal")) console.log(fileName);

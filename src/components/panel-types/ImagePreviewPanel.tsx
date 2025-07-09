@@ -8,8 +8,13 @@ import {
 } from "../iframe-runtime/GLMessageProtocol";
 import * as esbuild from "esbuild-wasm";
 import { v4 } from "uuid";
-import { GLMessageUIField, UIOption } from "../GLMessageUI";
+import {
+  GLMessageUIExternalContext,
+  GLMessageUIField,
+  UIOption,
+} from "../GLMessageUI";
 import "./ImagePreviewPanel.css";
+import { getffmpeg } from "../../ffmpeg/ffmpeg";
 
 function jsToDataURI(js: string) {
   return `data:application/javascript;base64,${btoa(js)}`;
@@ -48,6 +53,19 @@ export function execEvalbox(evalbox: HTMLIFrameElement, code: string) {
   });
 }
 
+let lastDrawCallCount = 0;
+let drawCalls = 0;
+
+let lastMessageCount = 0;
+let messages = 0;
+
+setInterval(() => {
+  // console.log("draw calls in the last second", drawCalls - lastDrawCallCount);
+  // console.log("messages in the last second", messages - lastMessageCount);
+  lastDrawCallCount = drawCalls;
+  lastMessageCount = messages;
+}, 1000);
+
 export function ImagePreviewPanel(props: {
   data: PanelType<"image-preview">;
   setData: (d: (d: PanelContentsItem) => PanelContentsItem) => void;
@@ -60,6 +78,26 @@ export function ImagePreviewPanel(props: {
   const [file, setFile] = useState<string>();
 
   const [evalboxGLWrapper, setEvalboxGLWrapper] = useState<string>();
+
+  const zoomPanRef = useRef<{
+    bottomLeft: [number, number];
+    topRight: [number, number];
+  }>({
+    bottomLeft: [-2, -2],
+    topRight: [2, 2],
+  });
+
+  const [controls, setControls] = useState<GLMessageUIExternalContext>({
+    panBottomLeft: [-2, -2],
+    panTopRight: [2, 2],
+  });
+
+  const ffmpegFrameCountRef = useRef(0);
+
+  useEffect(() => {
+    zoomPanRef.current.bottomLeft = controls.panBottomLeft;
+    zoomPanRef.current.topRight = controls.panTopRight;
+  }, [controls]);
 
   useEffect(() => {
     (async () => {
@@ -98,7 +136,84 @@ export function ImagePreviewPanel(props: {
   const containerRef = createRef<HTMLDivElement | null>();
 
   useEffect(() => {
-    console.log("MENU VALUES CHANGED", menuValues);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const mouseDownListener = (e: MouseEvent) => {
+      isMouseDown = true;
+    };
+
+    let mouseX = 0;
+    let mouseY = 0;
+    let isMouseDown = false;
+
+    const mouseMoveListener = (e: MouseEvent) => {
+      mouseX = 1 - e.offsetX / canvas.width;
+      mouseY = e.offsetY / canvas.height;
+      if (isMouseDown) {
+        setControls((ui) => {
+          const width = ui.panTopRight[0] - ui.panBottomLeft[0];
+          const height = ui.panTopRight[1] - ui.panBottomLeft[1];
+          const dx = (e.movementX / canvas.width) * width;
+          const dy = (e.movementY / canvas.height) * height;
+          return {
+            ...ui,
+            panBottomLeft: [ui.panBottomLeft[0] + dx, ui.panBottomLeft[1] - dy],
+            panTopRight: [ui.panTopRight[0] + dx, ui.panTopRight[1] - dy],
+          };
+        });
+      }
+    };
+
+    const mouseUpListener = (e: MouseEvent) => {
+      isMouseDown = false;
+    };
+
+    function lerp(x: number, a: number, b: number) {
+      return a * (1 - x) + b * x;
+    }
+
+    const wheelListener = (e: WheelEvent) => {
+      let delta = e.deltaY;
+      if (e.deltaMode === 0x1) {
+        delta *= 20;
+      } else if (e.deltaMode === 0x2) {
+        delta *= window.innerHeight;
+      }
+
+      const lerpFactor = delta / 1000;
+
+      setControls((ui) => {
+        const cx = lerp(mouseX, ui.panBottomLeft[0], ui.panTopRight[0]);
+        const cy = lerp(mouseY, ui.panBottomLeft[1], ui.panTopRight[1]);
+
+        const newBottomLeftX = lerp(lerpFactor, ui.panBottomLeft[0], cx);
+        const newBottomLeftY = lerp(lerpFactor, ui.panBottomLeft[1], cy);
+        const newTopRightX = lerp(lerpFactor, ui.panTopRight[0], cx);
+        const newTopRightY = lerp(lerpFactor, ui.panTopRight[1], cy);
+
+        return {
+          ...ui,
+          panBottomLeft: [newBottomLeftX, newBottomLeftY],
+          panTopRight: [newTopRightX, newTopRightY],
+        };
+      });
+    };
+
+    canvas.addEventListener("mousedown", mouseDownListener);
+    canvas.addEventListener("wheel", wheelListener);
+    document.addEventListener("mousemove", mouseMoveListener);
+    document.addEventListener("mouseup", mouseUpListener);
+
+    return () => {
+      document.removeEventListener("mousemove", mouseMoveListener);
+      document.removeEventListener("mouseup", mouseUpListener);
+      canvas.removeEventListener("mousedown", mouseDownListener);
+      canvas.removeEventListener("wheel", wheelListener);
+    };
+  }, []);
+
+  useEffect(() => {
     for (const [k, v] of menus.current) {
       menus.current.delete(k);
     }
@@ -126,7 +241,6 @@ export function ImagePreviewPanel(props: {
               name: "vfs",
               setup(build) {
                 build.onResolve({ filter: /.*/ }, async (args) => {
-                  console.log(args.path);
                   return {
                     path: args.path,
                     namespace: "app",
@@ -134,7 +248,6 @@ export function ImagePreviewPanel(props: {
                 });
 
                 build.onLoad({ filter: /.*/ }, async (args) => {
-                  console.log(args.path);
                   const filestr = await (await props.data.file!.fs.readFile(
                     args.path
                   ))!.text();
@@ -178,13 +291,18 @@ export function ImagePreviewPanel(props: {
 
       const container = containerRef.current;
 
+      let vao: WebGLVertexArrayObject;
+
       const messageListener = (e: MessageEvent) => {
+        const msgstart = performance.now();
         const canvas = canvasRef.current;
         if (!canvas) return;
         const gl = canvas.getContext("webgl2");
         if (!gl) return;
-        const vao = gl.createVertexArray();
-        gl.bindVertexArray(vao);
+        if (!vao) {
+          vao = gl.createVertexArray();
+          gl.bindVertexArray(vao);
+        }
         gl.viewport(0, 0, canvas.width, canvas.height);
         const context: GLMessageContext = {
           gl,
@@ -196,6 +314,9 @@ export function ImagePreviewPanel(props: {
           fs: props.data.file!.fs,
           canvas,
           container: { current: container },
+          zoomPan: zoomPanRef,
+          ffmpegFrameCount: ffmpegFrameCountRef,
+          getffmpeg: getffmpeg,
         };
 
         (async () => {
@@ -204,6 +325,8 @@ export function ImagePreviewPanel(props: {
             "*"
           );
           const glm = e.data as GLMessage;
+          messages++;
+          if (glm && glm.contents && glm.contents.type === "draw") drawCalls++;
           if (glm && glm.contents && glm.contents.type === "create-menu")
             setMenuValues((values) => ({
               ...Object.fromEntries(menus.current.entries()),
@@ -220,10 +343,6 @@ export function ImagePreviewPanel(props: {
       };
     }
   }, [file, props.data.file, evalboxGLWrapper]);
-
-  useEffect(() => {
-    console.log("CONTAINERREF", containerRef);
-  });
 
   return (
     <div className="image-preview-panel-container" ref={containerRef}>

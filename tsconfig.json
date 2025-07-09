@@ -4,7 +4,6 @@
     "jsx": "react",
     "esModuleInterop": true,
     "downlevelIteration": true,
-    "lib": ["ESNext", "DOM"],
-    "typeRoots": ["./node_modules/@types", "./types"]
+    "lib": ["DOM", "ESNext"]
   }
 }

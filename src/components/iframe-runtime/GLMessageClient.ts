@@ -17,6 +17,49 @@ import { parseGLSLWithoutPreprocessing } from "../../glsl-analyzer/parser-combin
 import { getInputsOutputsAndUniforms } from "../../glsl-analyzer/get-inputs-outputs";
 import { UIOption, UIReturnType } from "../GLMessageUI";
 
+export type RangeObject = {
+  map(
+    min: number,
+    max: number,
+    includeStart?: boolean,
+    includeEnd?: boolean
+  ): number;
+  divideInterval(min: number, max: number): [number, number];
+  index: number;
+  step: number;
+};
+
+export function range<T extends any | Promise<any>>(
+  divisions: number,
+  cb: (range: RangeObject) => T
+): T extends Promise<any> ? Promise<Awaited<T>[]> : T {
+  let out: any = [];
+  for (let i = 0; i < divisions; i++) {
+    out.push(
+      cb({
+        index: i,
+        map(min, max, includeStart = true, includeEnd = false) {
+          const step =
+            (max - min) /
+            (divisions + 1 - (includeStart ? 1 : 0) - (includeEnd ? 1 : 0));
+          let startPoint = min + (includeStart ? 0 : step);
+          return startPoint + i * step;
+        },
+        divideInterval(min, max) {
+          return [this.map(min, max), this.map(min, max, false, true)];
+        },
+        step: 1 / divisions,
+      })
+    );
+  }
+
+  if (out[0] && out[0] instanceof Promise) {
+    // @ts-expect-error
+    return Promise.all(out);
+  }
+  return out;
+}
+
 export function createGLMessageClient(
   send: <Msg extends GLMessage>(msg: Msg) => Promise<GLMessageResponse<Msg>>
 ) {
@@ -225,6 +268,64 @@ export function createGLMessageClient(
           height,
         },
       });
+    },
+    async getPanAndZoomBounds() {
+      const bounds = (
+        await send({
+          id: v4(),
+          contents: {
+            type: "get-pan-and-zoom-bounds",
+          },
+        })
+      ).content;
+
+      return {
+        ...bounds,
+        center: [
+          (bounds.bottomLeft[0] + bounds.topRight[0]) / 2,
+          (bounds.bottomLeft[1] + bounds.topRight[1]) / 2,
+        ] as [number, number],
+        dimensions: [
+          bounds.topRight[0] - bounds.bottomLeft[0],
+          bounds.topRight[1] - bounds.bottomLeft[1],
+        ] as [number, number],
+      };
+    },
+    async resetVideoEncoder() {
+      const res = await send({
+        id: v4(),
+        contents: {
+          type: "reset-encoder",
+        },
+      });
+    },
+    async addVideoFrame() {
+      const res = await send({
+        id: v4(),
+        contents: {
+          type: "add-frame",
+        },
+      });
+    },
+    async renderVideo(filename: string) {
+      const res = await send({
+        id: v4(),
+        contents: {
+          filename,
+          type: "render-video",
+        },
+      });
+    },
+    async readFile(filename: string) {
+      return (
+        await send({
+          id: v4(),
+          contents: {
+            filename,
+            type: "read-file",
+          },
+        })
+      ).content;
     },
   };
 }

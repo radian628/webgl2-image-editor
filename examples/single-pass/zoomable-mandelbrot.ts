@@ -1,10 +1,10 @@
 import { renderSimpleQuad } from "root/single-pass-renderer.ts";
 
-await resize(512, 512);
+await g.resize(512, 512);
 
 const render = await renderSimpleQuad("root/zoomable-mandelbrot.frag");
 
-const menu = await createMenu(
+const menu = await g.createMenu(
   ui.menu(
     "Options",
     {
@@ -16,12 +16,26 @@ const menu = await createMenu(
   )
 );
 
+function makeIntervalLogger() {
+  let time = performance.now();
+  return {
+    record(name: string) {
+      const timeTemp = performance.now();
+      console.log(name, timeTemp - time);
+      time = timeTemp;
+    },
+  };
+}
+
 loop(async () => {
-  const params = await pollMenu(menu);
+  const perf = makeIntervalLogger();
+  const params = await g.pollMenu(menu);
+
+  const bounds = await g.getPanAndZoomBounds();
 
   await render({
-    zoom: params.Zoom,
-    center: params.Center,
+    zoom: bounds.dimensions[0] * 0.5,
+    center: bounds.center,
     iterations: params.Iterations,
   });
 });

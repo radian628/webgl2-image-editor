@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { z } from "zod";
 import { NumberField } from "./fields/NumberField";
 import "./GLMessageUI.css";
@@ -55,6 +55,16 @@ export type UIOptionOrbitControls = {
 
 export type UIOptionFirstPersonControls = {
   type: "first-person";
+};
+
+export type UIOptionPanZoomControls = {
+  type: "pan-zoom";
+  defaultBottomLeft: [number, number];
+  defaultTopRight: [number, number];
+  step?: number;
+  min?: number;
+  max?: number;
+  sensitivity?: number;
 };
 
 export type UIOptionSelect<K extends string> = {
@@ -116,7 +126,9 @@ export type UIReturnType<T extends UIOption> = T extends UIOptionMenu
           ? {
               [K in keyof T["options"]]: { type: K; value: T["options"][K] };
             }[keyof T["options"]]
-          : never;
+          : T extends UIOptionPanZoomControls
+            ? { bottomLeft: [number, number]; topRight: [number, number] }
+            : never;
 
 export type UniformSpec = {
   type: "float" | "int" | "uint";
@@ -144,6 +156,11 @@ export type ShaderSpec = {
 };
 
 export type RenderTargetSpec = Record<string, ShaderInputOutputSpec>;
+
+export type GLMessageUIExternalContext = {
+  panBottomLeft: [number, number];
+  panTopRight: [number, number];
+};
 
 type GLMessageUIProps<UI extends UIOption> = {
   template: UI;

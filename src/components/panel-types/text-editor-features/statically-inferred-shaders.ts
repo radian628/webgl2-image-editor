@@ -51,6 +51,7 @@ async function generateStaticallyInferredShaders(fs: FilesystemAdaptor) {
     outstr +
     `\n\ntype LoadShaderOverloadMap = { ${mapstr} };
 
+declare interface GLMessageClient {
 declare function loadShader<K extends keyof LoadShaderOverloadMap, ST extends "vertex" | "fragment">(
   path: K,
   shaderType: ST
@@ -58,6 +59,7 @@ declare function loadShader<K extends keyof LoadShaderOverloadMap, ST extends "v
   id: string,
   shaderType: ST,
 } & LoadShaderOverloadMap[K];
+}
 `
   );
 }
