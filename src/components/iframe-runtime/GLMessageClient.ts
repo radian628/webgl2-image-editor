@@ -307,11 +307,12 @@ export function createGLMessageClient(
         },
       });
     },
-    async renderVideo(filename: string) {
+    async renderVideo(filename: string, audioLink?: string) {
       const res = await send({
         id: v4(),
         contents: {
           filename,
+          audioLink,
           type: "render-video",
         },
       });

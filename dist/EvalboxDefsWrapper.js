@@ -384,6 +384,7 @@ export type GLMessageContents = {
 } | {
     type: "render-video";
     filename: string;
+    audioLink?: string;
 } | {
     type: "read-file";
     filename: string;
@@ -563,7 +564,7 @@ export declare function createGLMessageClient(send: <Msg extends GLMessage>(msg:
     }>;
     resetVideoEncoder(): Promise<void>;
     addVideoFrame(): Promise<void>;
-    renderVideo(filename: string): Promise<void>;
+    renderVideo(filename: string, audioLink?: string): Promise<void>;
     readFile(filename: string): Promise<{
         file: Blob | undefined;
     }>;

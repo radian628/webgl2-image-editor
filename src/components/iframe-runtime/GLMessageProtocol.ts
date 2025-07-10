@@ -171,7 +171,7 @@ export type GLMessageContents =
   | { type: "reset-encoder" }
   // TODO: maybe make it able to render from other targets
   | { type: "add-frame" }
-  | { type: "render-video"; filename: string }
+  | { type: "render-video"; filename: string; audioLink?: string }
   | { type: "read-file"; filename: string };
 
 export type GLMessageContentsType<T extends GLMessageContents["type"]> =
@@ -724,9 +724,24 @@ export async function executeGLMessage<Msg extends GLMessage>(
       console.log(p);
     });
 
+    let backingTrackArgs: string[] = [];
+
+    if (msg.audioLink) {
+      const backingTrackFilename =
+        "backing_track" + (msg.audioLink.match(/\.\w+$/g)?.[0] ?? "");
+      await ffmpeg.writeFile(
+        backingTrackFilename,
+        new Uint8Array(
+          await (await context.fs.readFile(msg.audioLink))?.arrayBuffer()!
+        )
+      );
+      backingTrackArgs = ["-i", backingTrackFilename];
+    }
+
     ffmpeg.exec([
       "-r",
       "30",
+      ...backingTrackArgs,
       "-pattern_type",
       "glob",
       "-pix_fmt",

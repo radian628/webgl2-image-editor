@@ -22,6 +22,7 @@
     "esbuild-wasm": "^0.25.5",
     "express": "^5.1.0",
     "fft.js": "^4.0.4",
+    "mediabunny": "^1.0.5",
     "mitata": "^1.0.34",
     "prettier": "^3.6.2",
     "react": "^19.1.0",
