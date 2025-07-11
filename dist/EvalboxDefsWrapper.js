@@ -361,9 +361,8 @@ export declare function createGLMessageClient(send: <Msg extends GLMessage>(msg:
 import { createGLMessageClient } from "../runtime/GLMessageClient";
 import * as glclient from "../runtime/GLMessageClient";
 import * as glm from "../../gl-message/protocol/GLMessageProtocol";
-type GLMessageClient = ReturnType<typeof createGLMessageClient>;
 declare global {
-    const g: GLMessageClient;
+    type GLMessageClient = ReturnType<typeof createGLMessageClient>;
     function loop(callback: (time: number) => any): () => void;
     const ui: userInterface.UI;
     const range: typeof glclient.range;
@@ -414,7 +413,6 @@ declare global {
         retTypes: {};
     } extends A ? true : false;
 }
-export {};
 `])}]])}]])}],["filesystem",{type:"dir",contents:new Map([["fs-protocol",{type:"dir",contents:new Map([["FilesystemAdaptor.d.ts",{type:"file",contents:new Blob([`export type FilesystemAdaptor = {
     readDir: (path: string) => Promise<string[] | undefined>;
     isDir: (path: string) => Promise<boolean | undefined>;

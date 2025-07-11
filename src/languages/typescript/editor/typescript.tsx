@@ -219,7 +219,8 @@ export async function typescriptLanguageService(
       )
     );
     console.log(
-      services.getSemanticDiagnostics("@internal/StaticallyInferredFiles.d.ts")
+      services.getSemanticDiagnostics("@internal/StaticallyInferredFiles.d.ts"),
+      services.getSyntacticDiagnostics("@internal/StaticallyInferredFiles.d.ts")
     );
     console.log(
       services.getSemanticDiagnostics(

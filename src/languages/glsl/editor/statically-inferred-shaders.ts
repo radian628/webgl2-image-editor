@@ -110,25 +110,30 @@ async function generateStaticallyInferredShaders(fs: FilesystemAdaptor) {
   await traverseAndFindShaders("root");
   return (
     outstr +
-    `\n\ntype LoadShaderOverloadMap = { ${mapstr} };
+    `
+declare global {
+\n\ntype LoadShaderOverloadMap = { ${mapstr} };
 
 \n\ntype ShaderFunctionSignaturesMap = { ${sigstr} };
 
-declare interface GLMessageClient {
-declare function loadShader<K extends keyof LoadShaderOverloadMap, ST extends "vertex" | "fragment">(
+    const g: Omit<GLMessageClient, "loadShader" | "loadShaderSource"> & {
+loadShader: <K extends keyof LoadShaderOverloadMap, ST extends "vertex" | "fragment">(
   path: K,
   shaderType: ST
-): {
+) => {
   id: string,
   shaderType: ST,
 } & LoadShaderOverloadMap[K];
-declare function loadShaderSource<K extends keyof LoadShaderOverloadMap>(
+loadShaderSource: <K extends keyof LoadShaderOverloadMap>(
 path: K
-): {
+) => {
   spec: LoadShaderOverloadMap[K];
   functions: ShaderFunctionSignaturesMap[K];
 }
+  }
 }
+
+export {};
 `
   );
 }
