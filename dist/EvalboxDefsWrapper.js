@@ -413,92 +413,228 @@ declare global {
         retTypes: {};
     } extends A ? true : false;
 }
-`])}]])}]])}],["filesystem",{type:"dir",contents:new Map([["fs-protocol",{type:"dir",contents:new Map([["FilesystemAdaptor.d.ts",{type:"file",contents:new Blob([`export type FilesystemAdaptor = {
-    readDir: (path: string) => Promise<string[] | undefined>;
-    isDir: (path: string) => Promise<boolean | undefined>;
-    readFile: (path: string) => Promise<Blob | undefined>;
-    writeFile: (path: string, contents: Blob) => Promise<Blob | undefined>;
-    getDefaultPath: () => Promise<string>;
-    watchFile: (path: string, callback: () => void) => () => void;
-    watchPattern: (root: string, match: (path: string) => boolean, callback: (path: string) => void) => () => void;
+`])}]])}]])}],["gl-message",{type:"dir",contents:new Map([["protocol",{type:"dir",contents:new Map([["GLMessageProtocol.d.ts",{type:"file",contents:new Blob([`import { UIOption, UIReturnType } from "../../components/gl-message-ui/GLMessageUI";
+export type GLPrimitive = {
+    count: 1 | 2 | 3 | 4;
+    type: "float" | "int" | "uint";
 };
-export type SyncFilesystemAdaptor = {
-    [Key in keyof FilesystemAdaptor]: (...args: Parameters<FilesystemAdaptor[Key]>) => Awaited<ReturnType<FilesystemAdaptor[Key]>>;
-};
-export type VirtualFilesystemTree = {
-    type: "dir";
-    name: string;
-    contents: Map<string, VirtualFilesystemTree>;
+export type UniformType = GLPrimitive | {
+    type: "sampler";
+    dimensionality: "2D" | "3D" | "2DArray" | "Cube";
+    samplerType: "float" | "int" | "uint";
 } | {
-    type: "file";
-    name: string;
-    contents: Blob;
+    type: "sampler";
+    samplerType: "shadow";
+    dimensionality: "2D" | "2DArray" | "Cube";
 };
-`])}]])}],["fs-virtual",{type:"dir",contents:new Map([["FsVirtual.d.ts",{type:"file",contents:new Blob([`import { FilesystemAdaptor } from "../fs-protocol/FilesystemAdaptor";
-export type VirtualFilesystemTree = {
-    type: "dir";
-    name: string;
-    contents: Map<string, VirtualFilesystemTree>;
+export type GLPrimitiveToNumber<G extends GLPrimitive> = G["count"] extends 1 ? number : G["count"] extends 2 ? [number, number] : G["count"] extends 3 ? [number, number, number] : [number, number, number, number];
+export type UniformTypeValue<G extends UniformType> = G extends GLPrimitive ? GLPrimitiveToNumber<G> : TextureRef;
+export type UniformsToValues<G extends Record<string, UniformType>> = {
+    [K in keyof G]: UniformTypeValue<G[K]>;
+};
+export type ShaderSource = {
+    inputs: Record<string, GLPrimitive>;
+    outputs: Record<string, GLPrimitive>;
+    uniforms: Record<string, UniformType>;
+    shaderType: "vertex" | "fragment";
+    text: string;
+};
+export type ShaderRef<Type extends "vertex" | "fragment"> = {
+    inputs: Record<string, GLPrimitive>;
+    outputs: Record<string, GLPrimitive>;
+    uniforms: Record<string, UniformType>;
+    shaderType: Type;
+    id: string;
+};
+export type ProgramRef = {
+    inputs: Record<string, GLPrimitive>;
+    outputs: Record<string, GLPrimitive>;
+    uniforms: Record<string, UniformType>;
+    id: string;
+};
+export type TextureDimension = {
+    type: "dynamic";
+    pixels: number;
+};
+export type TextureRef = {
+    id: string;
+    width: TextureDimension;
+    height: TextureDimension;
+    dimensionality: "2D" | "3D" | "2DArray" | "Cube";
+    format: "float" | "int" | "uint";
+};
+export type GLMessageContents = {
+    type: "clear";
+    color?: [number, number, number, number];
+    depth?: number;
+    stencil?: number;
 } | {
-    type: "file";
+    type: "create-buffer";
+    id: string;
+    source: {
+        type: "array";
+        spec: InterleavedBufferSpec;
+    };
+} | {
+    type: "create-shader";
+    source: ShaderSource;
+    id: string;
+} | {
+    type: "create-program";
+    vertex: ShaderRef<"vertex">;
+    fragment: ShaderRef<"fragment">;
+    id: string;
+} | {
+    type: "draw";
+    program: ProgramRef;
+    inputs: Record<string, BufferInputRef>;
+    outputs: Record<string, TextureRef | null>;
+    uniforms: Record<string, number | number[] | TextureRef>;
+    count: number;
+} | {
+    type: "load-file";
+    path: string;
+} | {
+    type: "create-texture";
+    pixels?: ArrayBuffer;
+    width: number;
+    height: number;
+    depth?: number;
+    internalformat: GLenum;
+    minFilter: GLenum;
+    magFilter: GLenum;
+    wrapS: GLenum;
+    wrapT: GLenum;
+    id: string;
+} | {
+    type: "create-menu";
+    id: string;
+    menu: UIOption;
+} | {
+    type: "poll-menu";
+    id: string;
+    menu: MenuRef;
+} | {
+    type: "resize";
+    width: number;
+    height: number;
+} | {
+    type: "get-window-size";
+} | {
+    type: "get-pan-and-zoom-bounds";
+} | {
+    type: "reset-encoder";
+} | {
+    type: "add-frame";
+} | {
+    type: "render-video";
+    filename: string;
+    audioLink?: string;
+} | {
+    type: "read-file";
+    filename: string;
+} | {
+    type: "get-shader-function-signatures";
+    filename: string;
+};
+export type GLMessageContentsType<T extends GLMessageContents["type"]> = GLMessageContents & {
+    type: T;
+};
+export type GLMessageType<T extends GLMessageContents["type"]> = {
+    id: string;
+    contents: GLMessageContentsType<T>;
+};
+export type GLMessage = {
+    contents: GLMessageContents;
+    id: string;
+};
+export type MenuRef = {
+    id: string;
+    menu: UIOption;
+};
+export type GLMessageResponseContents<Msg extends GLMessage> = Msg extends GLMessageType<"create-buffer"> ? {
+    spec: Msg["contents"]["source"]["spec"];
+    id: string;
+} : Msg extends GLMessageType<"create-shader"> ? {
+    inputs: Msg["contents"]["source"]["inputs"];
+    outputs: Msg["contents"]["source"]["outputs"];
+    uniforms: Msg["contents"]["source"]["uniforms"];
+    shaderType: Msg["contents"]["source"]["shaderType"];
+    id: Msg["contents"]["id"];
+} : Msg extends GLMessageType<"create-program"> ? {
+    inputs: Msg["contents"]["vertex"]["inputs"];
+    outputs: Msg["contents"]["fragment"]["outputs"];
+    uniforms: Msg["contents"]["vertex"]["uniforms"] & Msg["contents"]["fragment"]["uniforms"];
+    id: Msg["contents"]["id"];
+} : Msg extends GLMessageType<"load-file"> ? {
+    file: Blob | undefined;
+} : Msg extends GLMessageType<"create-texture"> ? TextureRef : Msg extends GLMessageType<"create-menu"> ? MenuRef : Msg extends GLMessageType<"poll-menu"> ? UIReturnType<Msg["contents"]["menu"]["menu"]> : Msg extends GLMessageType<"get-window-size"> ? {
+    width: number;
+    height: number;
+} : Msg extends GLMessageType<"get-pan-and-zoom-bounds"> ? {
+    bottomLeft: [number, number];
+    topRight: [number, number];
+} : Msg extends GLMessageType<"read-file"> ? {
+    file: Blob | undefined;
+} : undefined;
+export type GLMessageResponse<Msg extends GLMessage> = {
+    id: string;
+    content: GLMessageResponseContents<Msg>;
+    timestamp: number;
+};
+export type InterleavedBufferSpec = {
+    count: 1 | 2 | 3 | 4;
+    size: 8 | 16 | 32;
+    encoding: "int" | "normalized-int" | "float" | "uint" | "normalized-uint";
+    value: number[];
     name: string;
-    contents: Blob;
+    stride: number;
+    offset: number;
+}[];
+export type BufferRef = {
+    spec: InterleavedBufferSpec;
+    id: string;
 };
-export declare function createVirtualFilesystem(tree: VirtualFilesystemTree): FilesystemAdaptor;
-`])}]])}]])}],["utilities",{type:"dir",contents:new Map([["lens",{type:"dir",contents:new Map([["lens.d.ts",{type:"file",contents:new Blob([`type NestedKeyOf<T, K> = K extends [infer K1, ...infer Kr] ? K1 extends keyof T ? NestedKeyOf<T[K1], Kr> : never : K extends [] ? T : never;
-export declare function setDeep<T, K extends [...string[]]>(t: T, path: K, v: (oldValue: NestedKeyOf<T, K>) => NestedKeyOf<T, K>): T;
-type StringKeys<T> = {
-    [Key in keyof T]: T[Key] extends string ? T[Key] : never;
+export type BufferInputRef = {
+    buffer: BufferRef;
+    inputName: string;
 };
-type LensValue<T, Root> = (cb: (t: T) => T) => Root;
-type LensPartial<T, Root> = (cb: (t: LensObject<T>) => Partial<T>) => Root;
-type LensEach<T, Root, I> = (cb: (item: LensObject<I>, index: number, array: I[]) => I) => Root;
-type LensMatch<T, Root> = <K extends keyof StringKeys<T>>(prop: K, matchers: ({
-    [Key in (T[K] & string) | "$d"]?: Key extends "$d" ? (t: LensObject<T>) => T : (t: LensObject<T & {
-        [Key2 in K]: Key;
-    }>) => T;
-} & {
-    $d: (t: LensObject<T>) => T;
-}) | {
-    [Key in T[K] & string]: (t: LensObject<T & {
-        [Key2 in K]: Key;
-    }>) => T;
-}) => Root;
-type LensGet<T, Root> = <G>(cb: (t: T) => G) => G;
-type WithLensMethods<T, Root> = T & {
-    $: LensValue<T, Root>;
-    $p: LensPartial<T, Root>;
-    $f: LensObject<T, T>;
-    $m: LensMatch<T, Root>;
-    $g: LensGet<T, Root>;
-} & (T extends (infer I)[] ? {
-    $e: LensEach<T, Root, I>;
-} : {});
-type LensObject<T, Root = T> = {
-    [K in keyof WithLensMethods<T, Root>]-?: K extends "$" ? LensValue<T, Root> : K extends "$p" ? LensPartial<T, Root> : K extends "$f" ? LensObject<T, T> : K extends "$e" ? T extends (infer I)[] ? LensEach<T, Root, I> : never : K extends "$m" ? LensMatch<T, Root> : K extends "$g" ? LensGet<T, Root> : undefined extends WithLensMethods<T, Root>[K] ? LensObject<WithLensMethods<T, Root>[K], Root> : LensObject<WithLensMethods<T, Root>[K], Root>;
+`])}]])}],["server",{type:"dir",contents:new Map([["GLMessageServer.d.ts",{type:"file",contents:new Blob([`import { Output, CanvasSource } from "mediabunny";
+import { UIOption } from "../../components/gl-message-ui/GLMessageUI";
+import { FilesystemAdaptor } from "../../filesystem/fs-protocol/FilesystemAdaptor";
+import { GLMessage, GLMessageResponse, GLPrimitive } from "../protocol/GLMessageProtocol";
+export declare function typeNameToGLPrimitive(typename: string): GLPrimitive | undefined;
+export type GLMessageContext = {
+    gl: WebGL2RenderingContext;
+    buffers: Map<string, WebGLBuffer>;
+    shaders: Map<string, WebGLShader>;
+    programs: Map<string, WebGLProgram>;
+    textures: Map<string, WebGLTexture>;
+    menus: Map<string, {
+        spec: UIOption;
+        value: any;
+    }>;
+    fs: FilesystemAdaptor;
+    canvas: HTMLCanvasElement;
+    container: {
+        current: HTMLElement | null;
+    };
+    zoomPan: {
+        current: {
+            bottomLeft: [number, number];
+            topRight: [number, number];
+        };
+    };
+    videoRef: {
+        current: {
+            output: Output;
+            canvasSource: CanvasSource;
+            frameIndex: number;
+            framerate: number;
+        };
+    };
 };
-export declare function lens<T, R = T>(t: T, path?: string[], root?: any): LensObject<T, R>;
-export declare function id<T>(t: T): T;
-export declare function delens<T>(t: LensObject<T>): T;
-export {};
-`])}]])}],["result",{type:"dir",contents:new Map([["result.d.ts",{type:"file",contents:new Blob([`export type ResultSuccess<T> = {
-    readonly success: true;
-    readonly data: T;
-};
-export type ResultError<E> = {
-    readonly success: false;
-    readonly error: E;
-};
-export declare class Result<T, E> {
-    readonly data: ResultSuccess<T> | ResultError<E>;
-    constructor(data: ResultSuccess<T> | ResultError<E>);
-    unsafeExpectSuccess(): T;
-    mapS<T2>(f: (t: T) => T2): Result<T2, E>;
-    mapE<E2>(f: (e: E) => E2): Result<T, E2>;
-}
-export declare function ok<T, E>(data: T): Result<T, E>;
-export declare function err<T, E>(error: E): Result<T, E>;
-export declare function splitSuccessesAndErrors<T, E>(results: Result<T, E>[]): [T[], E[]];
+export declare function executeGLMessage<Msg extends GLMessage>(msgwrapper: Msg, context: GLMessageContext): Promise<GLMessageResponse<Msg>>;
 `])}]])}]])}],["languages",{type:"dir",contents:new Map([["glsl",{type:"dir",contents:new Map([["parser",{type:"dir",contents:new Map([["glsl-keywords.d.ts",{type:"file",contents:new Blob([`export declare const GLSL_KEYWORDS: string[];
 export declare const GLSL_SYMBOLS: string[];
 `])}],["lexer.d.ts",{type:"file",contents:new Blob([`export declare enum TokenKind {
@@ -1322,292 +1458,91 @@ export declare function makeGLSLLanguageServer(context: {
     getSignatureHelp(file: string, pos: number): Promise<GLSLSignatureHelp | undefined>;
     getAutocompleteOptions(file: string, pos: number): Promise<GLSLAutocompleteOption[]>;
 };
-`])}]])}]])}]])}],["gl-message",{type:"dir",contents:new Map([["protocol",{type:"dir",contents:new Map([["GLMessageProtocol.d.ts",{type:"file",contents:new Blob([`import { UIOption, UIReturnType } from "../../components/gl-message-ui/GLMessageUI";
-export type GLPrimitive = {
-    count: 1 | 2 | 3 | 4;
-    type: "float" | "int" | "uint";
+`])}]])}]])}]])}],["utilities",{type:"dir",contents:new Map([["result",{type:"dir",contents:new Map([["result.d.ts",{type:"file",contents:new Blob([`export type ResultSuccess<T> = {
+    readonly success: true;
+    readonly data: T;
 };
-export type UniformType = GLPrimitive | {
-    type: "sampler";
-    dimensionality: "2D" | "3D" | "2DArray" | "Cube";
-    samplerType: "float" | "int" | "uint";
-} | {
-    type: "sampler";
-    samplerType: "shadow";
-    dimensionality: "2D" | "2DArray" | "Cube";
+export type ResultError<E> = {
+    readonly success: false;
+    readonly error: E;
 };
-export type GLPrimitiveToNumber<G extends GLPrimitive> = G["count"] extends 1 ? number : G["count"] extends 2 ? [number, number] : G["count"] extends 3 ? [number, number, number] : [number, number, number, number];
-export type UniformTypeValue<G extends UniformType> = G extends GLPrimitive ? GLPrimitiveToNumber<G> : TextureRef;
-export type UniformsToValues<G extends Record<string, UniformType>> = {
-    [K in keyof G]: UniformTypeValue<G[K]>;
+export declare class Result<T, E> {
+    readonly data: ResultSuccess<T> | ResultError<E>;
+    constructor(data: ResultSuccess<T> | ResultError<E>);
+    unsafeExpectSuccess(): T;
+    mapS<T2>(f: (t: T) => T2): Result<T2, E>;
+    mapE<E2>(f: (e: E) => E2): Result<T, E2>;
+}
+export declare function ok<T, E>(data: T): Result<T, E>;
+export declare function err<T, E>(error: E): Result<T, E>;
+export declare function splitSuccessesAndErrors<T, E>(results: Result<T, E>[]): [T[], E[]];
+`])}]])}],["lens",{type:"dir",contents:new Map([["lens.d.ts",{type:"file",contents:new Blob([`type NestedKeyOf<T, K> = K extends [infer K1, ...infer Kr] ? K1 extends keyof T ? NestedKeyOf<T[K1], Kr> : never : K extends [] ? T : never;
+export declare function setDeep<T, K extends [...string[]]>(t: T, path: K, v: (oldValue: NestedKeyOf<T, K>) => NestedKeyOf<T, K>): T;
+type StringKeys<T> = {
+    [Key in keyof T]: T[Key] extends string ? T[Key] : never;
 };
-export type ShaderSource = {
-    inputs: Record<string, GLPrimitive>;
-    outputs: Record<string, GLPrimitive>;
-    uniforms: Record<string, UniformType>;
-    shaderType: "vertex" | "fragment";
-    text: string;
+type LensValue<T, Root> = (cb: (t: T) => T) => Root;
+type LensPartial<T, Root> = (cb: (t: LensObject<T>) => Partial<T>) => Root;
+type LensEach<T, Root, I> = (cb: (item: LensObject<I>, index: number, array: I[]) => I) => Root;
+type LensMatch<T, Root> = <K extends keyof StringKeys<T>>(prop: K, matchers: ({
+    [Key in (T[K] & string) | "$d"]?: Key extends "$d" ? (t: LensObject<T>) => T : (t: LensObject<T & {
+        [Key2 in K]: Key;
+    }>) => T;
+} & {
+    $d: (t: LensObject<T>) => T;
+}) | {
+    [Key in T[K] & string]: (t: LensObject<T & {
+        [Key2 in K]: Key;
+    }>) => T;
+}) => Root;
+type LensGet<T, Root> = <G>(cb: (t: T) => G) => G;
+type WithLensMethods<T, Root> = T & {
+    $: LensValue<T, Root>;
+    $p: LensPartial<T, Root>;
+    $f: LensObject<T, T>;
+    $m: LensMatch<T, Root>;
+    $g: LensGet<T, Root>;
+} & (T extends (infer I)[] ? {
+    $e: LensEach<T, Root, I>;
+} : {});
+type LensObject<T, Root = T> = {
+    [K in keyof WithLensMethods<T, Root>]-?: K extends "$" ? LensValue<T, Root> : K extends "$p" ? LensPartial<T, Root> : K extends "$f" ? LensObject<T, T> : K extends "$e" ? T extends (infer I)[] ? LensEach<T, Root, I> : never : K extends "$m" ? LensMatch<T, Root> : K extends "$g" ? LensGet<T, Root> : undefined extends WithLensMethods<T, Root>[K] ? LensObject<WithLensMethods<T, Root>[K], Root> : LensObject<WithLensMethods<T, Root>[K], Root>;
 };
-export type ShaderRef<Type extends "vertex" | "fragment"> = {
-    inputs: Record<string, GLPrimitive>;
-    outputs: Record<string, GLPrimitive>;
-    uniforms: Record<string, UniformType>;
-    shaderType: Type;
-    id: string;
-};
-export type ProgramRef = {
-    inputs: Record<string, GLPrimitive>;
-    outputs: Record<string, GLPrimitive>;
-    uniforms: Record<string, UniformType>;
-    id: string;
-};
-export type TextureDimension = {
-    type: "dynamic";
-    pixels: number;
-};
-export type TextureRef = {
-    id: string;
-    width: TextureDimension;
-    height: TextureDimension;
-    dimensionality: "2D" | "3D" | "2DArray" | "Cube";
-    format: "float" | "int" | "uint";
-};
-export type GLMessageContents = {
-    type: "clear";
-    color?: [number, number, number, number];
-    depth?: number;
-    stencil?: number;
-} | {
-    type: "create-buffer";
-    id: string;
-    source: {
-        type: "array";
-        spec: InterleavedBufferSpec;
-    };
-} | {
-    type: "create-shader";
-    source: ShaderSource;
-    id: string;
-} | {
-    type: "create-program";
-    vertex: ShaderRef<"vertex">;
-    fragment: ShaderRef<"fragment">;
-    id: string;
-} | {
-    type: "draw";
-    program: ProgramRef;
-    inputs: Record<string, BufferInputRef>;
-    outputs: Record<string, TextureRef | null>;
-    uniforms: Record<string, number | number[] | TextureRef>;
-    count: number;
-} | {
-    type: "load-file";
-    path: string;
-} | {
-    type: "create-texture";
-    pixels?: ArrayBuffer;
-    width: number;
-    height: number;
-    depth?: number;
-    internalformat: GLenum;
-    minFilter: GLenum;
-    magFilter: GLenum;
-    wrapS: GLenum;
-    wrapT: GLenum;
-    id: string;
-} | {
-    type: "create-menu";
-    id: string;
-    menu: UIOption;
-} | {
-    type: "poll-menu";
-    id: string;
-    menu: MenuRef;
-} | {
-    type: "resize";
-    width: number;
-    height: number;
-} | {
-    type: "get-window-size";
-} | {
-    type: "get-pan-and-zoom-bounds";
-} | {
-    type: "reset-encoder";
-} | {
-    type: "add-frame";
-} | {
-    type: "render-video";
-    filename: string;
-    audioLink?: string;
-} | {
-    type: "read-file";
-    filename: string;
-} | {
-    type: "get-shader-function-signatures";
-    filename: string;
-};
-export type GLMessageContentsType<T extends GLMessageContents["type"]> = GLMessageContents & {
-    type: T;
-};
-export type GLMessageType<T extends GLMessageContents["type"]> = {
-    id: string;
-    contents: GLMessageContentsType<T>;
-};
-export type GLMessage = {
-    contents: GLMessageContents;
-    id: string;
-};
-export type MenuRef = {
-    id: string;
-    menu: UIOption;
-};
-export type GLMessageResponseContents<Msg extends GLMessage> = Msg extends GLMessageType<"create-buffer"> ? {
-    spec: Msg["contents"]["source"]["spec"];
-    id: string;
-} : Msg extends GLMessageType<"create-shader"> ? {
-    inputs: Msg["contents"]["source"]["inputs"];
-    outputs: Msg["contents"]["source"]["outputs"];
-    uniforms: Msg["contents"]["source"]["uniforms"];
-    shaderType: Msg["contents"]["source"]["shaderType"];
-    id: Msg["contents"]["id"];
-} : Msg extends GLMessageType<"create-program"> ? {
-    inputs: Msg["contents"]["vertex"]["inputs"];
-    outputs: Msg["contents"]["fragment"]["outputs"];
-    uniforms: Msg["contents"]["vertex"]["uniforms"] & Msg["contents"]["fragment"]["uniforms"];
-    id: Msg["contents"]["id"];
-} : Msg extends GLMessageType<"load-file"> ? {
-    file: Blob | undefined;
-} : Msg extends GLMessageType<"create-texture"> ? TextureRef : Msg extends GLMessageType<"create-menu"> ? MenuRef : Msg extends GLMessageType<"poll-menu"> ? UIReturnType<Msg["contents"]["menu"]["menu"]> : Msg extends GLMessageType<"get-window-size"> ? {
-    width: number;
-    height: number;
-} : Msg extends GLMessageType<"get-pan-and-zoom-bounds"> ? {
-    bottomLeft: [number, number];
-    topRight: [number, number];
-} : Msg extends GLMessageType<"read-file"> ? {
-    file: Blob | undefined;
-} : undefined;
-export type GLMessageResponse<Msg extends GLMessage> = {
-    id: string;
-    content: GLMessageResponseContents<Msg>;
-    timestamp: number;
-};
-export type InterleavedBufferSpec = {
-    count: 1 | 2 | 3 | 4;
-    size: 8 | 16 | 32;
-    encoding: "int" | "normalized-int" | "float" | "uint" | "normalized-uint";
-    value: number[];
-    name: string;
-    stride: number;
-    offset: number;
-}[];
-export type BufferRef = {
-    spec: InterleavedBufferSpec;
-    id: string;
-};
-export type BufferInputRef = {
-    buffer: BufferRef;
-    inputName: string;
-};
-`])}]])}],["server",{type:"dir",contents:new Map([["GLMessageServer.d.ts",{type:"file",contents:new Blob([`import { Output, CanvasSource } from "mediabunny";
-import { UIOption } from "../../components/gl-message-ui/GLMessageUI";
-import { FilesystemAdaptor } from "../../filesystem/fs-protocol/FilesystemAdaptor";
-import { GLMessage, GLMessageResponse, GLPrimitive } from "../protocol/GLMessageProtocol";
-export declare function typeNameToGLPrimitive(typename: string): GLPrimitive | undefined;
-export type GLMessageContext = {
-    gl: WebGL2RenderingContext;
-    buffers: Map<string, WebGLBuffer>;
-    shaders: Map<string, WebGLShader>;
-    programs: Map<string, WebGLProgram>;
-    textures: Map<string, WebGLTexture>;
-    menus: Map<string, {
-        spec: UIOption;
-        value: any;
-    }>;
-    fs: FilesystemAdaptor;
-    canvas: HTMLCanvasElement;
-    container: {
-        current: HTMLElement | null;
-    };
-    zoomPan: {
-        current: {
-            bottomLeft: [number, number];
-            topRight: [number, number];
-        };
-    };
-    videoRef: {
-        current: {
-            output: Output;
-            canvasSource: CanvasSource;
-            frameIndex: number;
-            framerate: number;
-        };
-    };
-};
-export declare function executeGLMessage<Msg extends GLMessage>(msgwrapper: Msg, context: GLMessageContext): Promise<GLMessageResponse<Msg>>;
-`])}]])}]])}]])}],["oldsrc",{type:"dir",contents:new Map([["pipeline-assembler",{type:"dir",contents:new Map([["pipeline-format.d.ts",{type:"file",contents:new Blob([`type ID = string;
-type GL = WebGL2RenderingContext;
-export type GLSLFunctionNode = {
-    type: "glsl";
-    id: ID;
-    incoming: {
-        from: ID;
-        slot: string;
-    }[];
-    outgoing: {
-        from: ID;
-        slot: string;
-    };
-    src: string;
-    functionName: string;
-};
-export type TextureFormat = {
-    format: GL["R8"] | GL["R8_SNORM"] | GL["RG8"] | GL["RG8_SNORM"] | GL["RGB8"] | GL["RGB8_SNORM"] | GL["RGB565"] | GL["RGBA4"] | GL["RGB5_A1"] | GL["RGBA8"] | GL["RGBA8_SNORM"] | GL["RGB10_A2"] | GL["RGB10_A2UI"] | GL["SRGB8"] | GL["SRGB8_ALPHA8"] | GL["R16F"] | GL["RG16F"] | GL["RGB16F"] | GL["RGBA16F"] | GL["R32F"] | GL["RG32F"] | GL["RGB32F"] | GL["RGBA32F"] | GL["R11F_G11F_B10F"] | GL["RGB9_E5"] | GL["R8I"] | GL["R8UI"] | GL["R16I"] | GL["R16UI"] | GL["R32I"] | GL["R32UI"] | GL["RG8I"] | GL["RG8UI"] | GL["RG16I"] | GL["RG16UI"] | GL["RG32I"] | GL["RG32UI"] | GL["RGB8I"] | GL["RGB8UI"] | GL["RGB16I"] | GL["RGB16UI"] | GL["RGB32I"] | GL["RGB32UI"] | GL["RGBA8I"] | GL["RGBA8UI"] | GL["RGBA16I"] | GL["RGBA16UI"] | GL["RGBA32I"] | GL["RGBA32UI"];
-    width: number;
-    height: number;
-    type: GL["UNSIGNED_BYTE"] | GL["UNSIGNED_SHORT_5_6_5"] | GL["UNSIGNED_SHORT_4_4_4_4"] | GL["UNSIGNED_SHORT_5_5_5_1"] | GL["UNSIGNED_SHORT"] | GL["UNSIGNED_INT"] | GL["BYTE"] | GL["UNSIGNED_SHORT"] | GL["SHORT"] | GL["INT"] | GL["HALF_FLOAT"] | GL["FLOAT"] | GL["UNSIGNED_INT_2_10_10_10_REV"] | GL["UNSIGNED_INT_10F_11F_11F_REV"] | GL["UNSIGNED_INT_5_9_9_9_REV"] | GL["UNSIGNED_INT_24_8"] | GL["FLOAT_32_UNSIGNED_INT_24_8_REV"];
-};
-export type FramebufferNode = {
-    type: "framebuffer";
-    id: ID;
-    attachments: {
-        attachment: GL["COLOR_ATTACHMENT0"] | GL["COLOR_ATTACHMENT1"] | GL["COLOR_ATTACHMENT2"] | GL["COLOR_ATTACHMENT3"] | GL["COLOR_ATTACHMENT4"] | GL["COLOR_ATTACHMENT5"] | GL["COLOR_ATTACHMENT6"] | GL["COLOR_ATTACHMENT7"] | GL["COLOR_ATTACHMENT8"] | GL["COLOR_ATTACHMENT9"] | GL["COLOR_ATTACHMENT10"] | GL["COLOR_ATTACHMENT11"] | GL["COLOR_ATTACHMENT12"] | GL["COLOR_ATTACHMENT13"] | GL["COLOR_ATTACHMENT14"] | GL["COLOR_ATTACHMENT15"] | GL["DEPTH_ATTACHMENT"] | GL["STENCIL_ATTACHMENT"] | GL["DEPTH_STENCIL_ATTACHMENT"];
-        texture: TextureFormat;
-    }[];
-};
-export type BufferVectorArray = {
-    type: "float";
-    size: 1 | 2 | 3 | 4;
-    datatype: GL["BYTE"] | GL["SHORT"] | GL["UNSIGNED_BYTE"] | GL["UNSIGNED_SHORT"] | GL["FLOAT"] | GL["HALF_FLOAT"] | GL["INT"] | GL["UNSIGNED_INT"] | GL["INT_2_10_10_10_REV"] | GL["UNSIGNED_INT_2_10_10_10_REV"];
-    normalized: boolean;
-    stride: GLsizei;
-    offset: GLintptr;
-} | {
-    type: "int";
-    size: 1 | 2 | 3 | 4;
-    datatype: GL["BYTE"] | GL["UNSIGNED_BYTE"] | GL["SHORT"] | GL["UNSIGNED_SHORT"] | GL["INT"] | GL["UNSIGNED_INT"];
-    stride: GLsizei;
-    offset: GLintptr;
-};
-export type BufferFormat = BufferVectorArray[];
-export type GeometryNode = {
-    type: "geometry";
-    id: ID;
-    buffers: BufferFormat[];
-};
-export type RasterizerNode = {
-    type: "rasterizer";
-    id: ID;
-    inputs: {
-        id: ID;
-        index: number;
-    }[];
-    indices?: ID;
-};
-export type RenderState = {
-    buffers: Map<number, WebGLBuffer>;
-    textures: Map<number, WebGLTexture>;
-    framebuffers: Map<number, WebGLFramebuffer | null>;
-};
+export declare function lens<T, R = T>(t: T, path?: string[], root?: any): LensObject<T, R>;
+export declare function id<T>(t: T): T;
+export declare function delens<T>(t: LensObject<T>): T;
 export {};
-`])}]])}]])}]])};var r=e;export{r as default};
+`])}]])}]])}],["filesystem",{type:"dir",contents:new Map([["fs-protocol",{type:"dir",contents:new Map([["FilesystemAdaptor.d.ts",{type:"file",contents:new Blob([`export type FilesystemAdaptor = {
+    readDir: (path: string) => Promise<string[] | undefined>;
+    isDir: (path: string) => Promise<boolean | undefined>;
+    readFile: (path: string) => Promise<Blob | undefined>;
+    writeFile: (path: string, contents: Blob) => Promise<Blob | undefined>;
+    getDefaultPath: () => Promise<string>;
+    watchFile: (path: string, callback: () => void) => () => void;
+    watchPattern: (root: string, match: (path: string) => boolean, callback: (path: string) => void) => () => void;
+};
+export type SyncFilesystemAdaptor = {
+    [Key in keyof FilesystemAdaptor]: (...args: Parameters<FilesystemAdaptor[Key]>) => Awaited<ReturnType<FilesystemAdaptor[Key]>>;
+};
+export type VirtualFilesystemTree = {
+    type: "dir";
+    name: string;
+    contents: Map<string, VirtualFilesystemTree>;
+} | {
+    type: "file";
+    name: string;
+    contents: Blob;
+};
+`])}]])}],["fs-virtual",{type:"dir",contents:new Map([["FsVirtual.d.ts",{type:"file",contents:new Blob([`import { FilesystemAdaptor } from "../fs-protocol/FilesystemAdaptor";
+export type VirtualFilesystemTree = {
+    type: "dir";
+    name: string;
+    contents: Map<string, VirtualFilesystemTree>;
+} | {
+    type: "file";
+    name: string;
+    contents: Blob;
+};
+export declare function createVirtualFilesystem(tree: VirtualFilesystemTree): FilesystemAdaptor;
+`])}]])}]])}]])}]])};var r=e;export{r as default};
 //# sourceMappingURL=EvalboxDefsWrapper.js.map

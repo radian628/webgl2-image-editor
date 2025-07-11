@@ -10,7 +10,6 @@ import {
   UIOption,
 } from "../../gl-message-ui/GLMessageUI";
 import "./ImagePreviewPanel.css";
-import { getffmpeg } from "../../../../oldsrc/ffmpeg/ffmpeg";
 import {
   executeGLMessage,
   GLMessageContext,
