@@ -375,17 +375,17 @@ declare global {
         params: Record<string, ShaderFunctionParameters>;
         functions: Record<string, true>;
     };
-    type IsValidComposite<T extends ShaderFunctionSignatures, FnName extends keyof T["retTypes"]["vec4"]["params"]["vec4"]["params"]["vec4"]["functions"]> = T["retTypes"]["vec4"]["params"]["vec4"]["params"]["vec4"]["functions"][FnName];
     type GetFunctionsWithSignature<T extends ShaderFunctionSignatures, RetType extends string, ParamTypes extends string[]> = GetFunctionsWithSignatureParamsOnly<T["retTypes"][RetType], ParamTypes>;
     type GetFunctionsWithSignatureParamsOnly<T extends ShaderFunctionParameters, ParamTypes extends string[]> = ParamTypes extends [
         infer First extends string,
         ...infer Rest extends string[]
     ] ? GetFunctionsWithSignatureParamsOnly<T["params"][First], Rest> : keyof T["functions"];
-    type ExcludeSigs<A extends ShaderFunctionSignatures, B extends ShaderFunctionSignatures> = {
+    type ExcludeSigsRaw<A extends ShaderFunctionSignatures, B extends ShaderFunctionSignatures> = {
         retTypes: {
             [K in keyof A["retTypes"]]: ExcludeSigsParamsOnly<A["retTypes"][K], B["retTypes"][K]>;
         };
     };
+    type ExcludeSigs<A extends ShaderFunctionSignatures, B extends ShaderFunctionSignatures> = KillEmptySigs<ExcludeSigsRaw<A, B>>;
     type NoNeverProps<T> = {
         [K in keyof T as T[K] extends never ? never : K]: T[K];
     };

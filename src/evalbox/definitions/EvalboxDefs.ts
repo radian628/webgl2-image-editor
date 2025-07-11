@@ -20,12 +20,6 @@ declare global {
     functions: Record<string, true>;
   };
 
-  type IsValidComposite<
-    T extends ShaderFunctionSignatures,
-    FnName extends
-      keyof T["retTypes"]["vec4"]["params"]["vec4"]["params"]["vec4"]["functions"],
-  > = T["retTypes"]["vec4"]["params"]["vec4"]["params"]["vec4"]["functions"][FnName];
-
   type GetFunctionsWithSignature<
     T extends ShaderFunctionSignatures,
     RetType extends string,
@@ -42,7 +36,7 @@ declare global {
     ? GetFunctionsWithSignatureParamsOnly<T["params"][First], Rest>
     : keyof T["functions"];
 
-  type ExcludeSigs<
+  type ExcludeSigsRaw<
     A extends ShaderFunctionSignatures,
     B extends ShaderFunctionSignatures,
   > = {
@@ -53,6 +47,11 @@ declare global {
       >;
     };
   };
+
+  type ExcludeSigs<
+    A extends ShaderFunctionSignatures,
+    B extends ShaderFunctionSignatures,
+  > = KillEmptySigs<ExcludeSigsRaw<A, B>>;
 
   type NoNeverProps<T> = {
     [K in keyof T as T[K] extends never ? never : K]: T[K];

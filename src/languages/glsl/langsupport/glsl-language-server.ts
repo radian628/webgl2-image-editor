@@ -726,11 +726,7 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
         fs,
       });
 
-      console.log("1", sem);
-
       if (!sem) return;
-
-      console.log("2");
 
       const enclosingScopes = getEnclosingScopes(sem.builtinScope, pos);
 
@@ -746,8 +742,6 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
         },
       });
 
-      console.log("3");
-
       // find the smallest enclosing function call
       let callRange = Infinity;
       let fncall: ASTNode<FunctionCallExpr> | undefined = undefined;
@@ -760,7 +754,6 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
           }
         }
       }
-      console.log("4", fncall);
 
       if (!fncall) return;
 
@@ -768,7 +761,6 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
       const fnname = getFunctionCallName(fncall.data);
       const fnproto = scopeFind(enclosingScopes, fnname);
 
-      console.log("5", fnproto);
       if (!fnproto || fnproto.type !== "function") return;
 
       const sig =
@@ -776,11 +768,7 @@ export function makeGLSLLanguageServer(context: { fs: FilesystemAdaptor }) {
           ? fnproto.signatures.list[0].fndef.data.prototype
           : undefined;
 
-      console.log("6", sig);
-
       if (!sig) return;
-
-      console.log("7");
 
       return {
         name: fnname,

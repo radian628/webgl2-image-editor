@@ -202,42 +202,6 @@ export async function typescriptLanguageService(
     },
   };
 
-  const check = () => {
-    console.log(
-      services.getSemanticDiagnostics(
-        "@internal/src/evalbox/definitions/EvalboxDefs.d.ts"
-      )
-    );
-    console.log(
-      services.getSemanticDiagnostics(
-        "root/@internal/src/evalbox/runtime/GLMessageClient.d.ts"
-      )
-    );
-    console.log(
-      services.getSemanticDiagnostics(
-        "root/@internal/src/gl-message/protocol/GLMessageProtocol.d.ts"
-      )
-    );
-    console.log(
-      services.getSemanticDiagnostics("@internal/StaticallyInferredFiles.d.ts"),
-      services.getSyntacticDiagnostics("@internal/StaticallyInferredFiles.d.ts")
-    );
-    console.log(
-      services.getSemanticDiagnostics(
-        "root/@internal/src/evalbox/runtime/EvalboxUIWrapper.d.ts"
-      )
-    );
-    console.log(
-      services.getSemanticDiagnostics(
-        "root/root/@internal/src/components/gl-message-ui/GLMessageUI.d.ts"
-      )
-    );
-  };
-
-  setTimeout(check, 1000);
-  setTimeout(check, 2000);
-  setTimeout(check, 3000);
-
   const services = ts.createLanguageService(
     servicesHost,
     ts.createDocumentRegistry()
