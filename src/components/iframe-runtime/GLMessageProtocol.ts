@@ -6,6 +6,15 @@ import {
 } from "../GLMessageUI";
 import { BufferFormat } from "../../pipeline-assembler/pipeline-format";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
+import {
+  BufferTarget,
+  CanvasSource,
+  getFirstEncodableVideoCodec,
+  Mp4OutputFormat,
+  Output,
+  QUALITY_HIGH,
+} from "mediabunny";
+import { makeGLSLLanguageServer } from "../../glsl-analyzer/langserver/glsl-language-server";
 
 export type GLPrimitive = {
   count: 1 | 2 | 3 | 4;
@@ -172,7 +181,11 @@ export type GLMessageContents =
   // TODO: maybe make it able to render from other targets
   | { type: "add-frame" }
   | { type: "render-video"; filename: string; audioLink?: string }
-  | { type: "read-file"; filename: string };
+  | { type: "read-file"; filename: string }
+  | {
+      type: "get-shader-function-signatures";
+      filename: string;
+    };
 
 export type GLMessageContentsType<T extends GLMessageContents["type"]> =
   GLMessageContents & { type: T };
@@ -254,8 +267,16 @@ export type GLMessageContext = {
       topRight: [number, number];
     };
   };
-  getffmpeg: () => Promise<FFmpeg>;
-  ffmpegFrameCount: { current: number };
+  // getffmpeg: () => Promise<FFmpeg>;
+  // ffmpegFrameCount: { current: number };
+  videoRef: {
+    current: {
+      output: Output;
+      canvasSource: CanvasSource;
+      frameIndex: number;
+      framerate: number;
+    };
+  };
 };
 
 export type InterleavedBufferSpec = {
@@ -674,16 +695,30 @@ export async function executeGLMessage<Msg extends GLMessage>(
       timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "reset-encoder") {
-    const ffmpeg = await context.getffmpeg();
-
-    // delete all files in ffmpeg
-    const files = await ffmpeg.listDir("/");
-    await Promise.all(
-      files.map(async (f) =>
-        f.isDir ? undefined : await ffmpeg.deleteFile(f.name)
-      )
+    const v = context.videoRef.current;
+    v.output = new Output({
+      target: new BufferTarget(),
+      format: new Mp4OutputFormat(),
+    });
+    const videoCodec = await getFirstEncodableVideoCodec(
+      v.output.format.getSupportedVideoCodecs(),
+      {
+        width: context.canvas.width,
+        height: context.canvas.height,
+      }
     );
-    context.ffmpegFrameCount.current = 0;
+    if (!videoCodec) {
+      // TODO: find a better way of doing this
+      throw new Error("cannot render video :(");
+    }
+    v.canvasSource = new CanvasSource(context.canvas, {
+      codec: videoCodec,
+      bitrate: QUALITY_HIGH,
+    });
+    v.output.addVideoTrack(v.canvasSource, { frameRate: 30 });
+    v.frameIndex = 0;
+    v.framerate = 30;
+    await v.output.start();
     return {
       id: msgwrapper.id,
       // @ts-expect-error
@@ -691,23 +726,10 @@ export async function executeGLMessage<Msg extends GLMessage>(
       timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "add-frame") {
-    const ffmpeg = await context.getffmpeg();
-
-    context.ffmpegFrameCount.current++;
-
-    const filenum = context.ffmpegFrameCount.current.toString();
-
-    const filename = filenum.padStart(20, "0") + ".png";
-    const png = context.canvas.toBlob(async (blob) => {
-      if (!blob) {
-        window.alert("Failed to extract canvas data.");
-      }
-      await ffmpeg.writeFile(
-        filename,
-        new Uint8Array(await blob!.arrayBuffer())
-      );
-    });
-
+    const v = context.videoRef.current;
+    const timestamp = v.frameIndex / v.framerate;
+    await v.canvasSource.add(timestamp, 1 / v.framerate);
+    v.frameIndex++;
     return {
       id: msgwrapper.id,
       // @ts-expect-error
@@ -715,48 +737,14 @@ export async function executeGLMessage<Msg extends GLMessage>(
       timestamp: performance.now() - performance.timeOrigin,
     };
   } else if (msg.type === "render-video") {
-    const ffmpeg = await context.getffmpeg();
+    const v = context.videoRef.current;
+    await v.canvasSource.close();
+    await v.output.finalize();
 
-    ffmpeg.on("log", ({ type, message }) => {
-      console.log(type, message);
+    const videoBlob = new Blob([(v.output.target as BufferTarget).buffer!], {
+      type: "video/mp4",
     });
-    ffmpeg.on("progress", (p) => {
-      console.log(p);
-    });
-
-    let backingTrackArgs: string[] = [];
-
-    if (msg.audioLink) {
-      const backingTrackFilename =
-        "backing_track" + (msg.audioLink.match(/\.\w+$/g)?.[0] ?? "");
-      await ffmpeg.writeFile(
-        backingTrackFilename,
-        new Uint8Array(
-          await (await context.fs.readFile(msg.audioLink))?.arrayBuffer()!
-        )
-      );
-      backingTrackArgs = ["-i", backingTrackFilename];
-    }
-
-    ffmpeg.exec([
-      "-r",
-      "30",
-      ...backingTrackArgs,
-      "-pattern_type",
-      "glob",
-      "-pix_fmt",
-      "rgba",
-      "-i",
-      "*.png",
-      "-vcodec",
-      "libx264",
-      "-pix_fmt",
-      "yuv420p",
-      "test.mp4",
-    ]);
-
-    download(new Blob([await ffmpeg.readFile("test.mp4")]), msg.filename);
-
+    download(videoBlob, msg.filename);
     return {
       id: msgwrapper.id,
       // @ts-expect-error
@@ -770,6 +758,29 @@ export async function executeGLMessage<Msg extends GLMessage>(
       timestamp: performance.now() - performance.timeOrigin,
       // @ts-expect-error
       content: { file },
+    };
+  } else if (msg.type === "get-shader-function-signatures") {
+    const glslservice = makeGLSLLanguageServer({
+      fs: context.fs,
+    });
+
+    const signatures = await glslservice.semanticallyAnalyzeGLSL(
+      msg.filename,
+      false
+    );
+    console.log(signatures);
+
+    // const shader = await (await context.fs.readFile(msg.filename))?.text();
+
+    // if (!shader) {
+    //   throw new Error("")
+    // }
+
+    return {
+      id: msgwrapper.id,
+      timestamp: performance.now() - performance.timeOrigin,
+      // @ts-expect-error
+      content: undefined,
     };
   }
 

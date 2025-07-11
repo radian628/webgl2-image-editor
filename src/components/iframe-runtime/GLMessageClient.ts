@@ -328,5 +328,8 @@ export function createGLMessageClient(
         })
       ).content;
     },
+    async loadShaderSource(filename: string) {
+      return;
+    },
   };
 }

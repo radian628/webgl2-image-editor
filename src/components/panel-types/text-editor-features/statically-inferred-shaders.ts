@@ -1,12 +1,20 @@
 import { FilesystemAdaptor } from "../../../filesystem/FilesystemAdaptor";
+import { FormatGLSLPacked } from "../../../glsl-analyzer/formatter/fmt-packed";
 import { getInputsOutputsAndUniforms } from "../../../glsl-analyzer/get-inputs-outputs";
+import { getParameters } from "../../../glsl-analyzer/glsl-ast-utils";
+import { makeGLSLLanguageServer } from "../../../glsl-analyzer/langserver/glsl-language-server";
 import { parseGLSLWithoutPreprocessing } from "../../../glsl-analyzer/parser-combined";
 
 async function generateStaticallyInferredShaders(fs: FilesystemAdaptor) {
   let outstr = "";
   let mapstr = "";
+  let sigstr = "";
   async function traverseAndFindShaders(dir: string) {
     const listing = await fs.readDir(dir);
+
+    const glslservice = makeGLSLLanguageServer({
+      fs,
+    });
 
     for (const item of listing ?? []) {
       const path = dir + "/" + item;
@@ -34,6 +42,59 @@ async function generateStaticallyInferredShaders(fs: FilesystemAdaptor) {
               outputs: ${JSON.stringify(inputsOutputsAndUniforms.outputs)}
           `;
 
+          const signatures = await glslservice.semanticallyAnalyzeGLSL(
+            path,
+            false
+          );
+
+          const signaturesMap: any = {
+            retType: {},
+          };
+
+          if (signatures) {
+            for (const [fnname, fn] of signatures.globalScope.items.entries()) {
+              if (fn.type === "function" && fn.signatures.type === "list") {
+                for (const sig of fn.signatures.list) {
+                  const parameters = getParameters(sig.fndef);
+                  const returnType =
+                    sig.fndef.data.prototype.data.fullySpecifiedType;
+                  const retTypeStr =
+                    FormatGLSLPacked.fullySpecifiedType(returnType);
+                  const paramTypeStrs = parameters.data.map((p) => {
+                    const paramtype =
+                      p.data.declaratorOrSpecifier.type === "declarator"
+                        ? p.data.declaratorOrSpecifier.declarator.data
+                            .typeSpecifier
+                        : p.data.declaratorOrSpecifier.specifier;
+                    return FormatGLSLPacked.typeSpecifier(paramtype);
+                  });
+
+                  let signaturesTemp = signaturesMap;
+                  if (!signaturesTemp.retType[retTypeStr]) {
+                    signaturesTemp.retType[retTypeStr] = {
+                      functions: {},
+                      params: {},
+                    };
+                  }
+                  signaturesTemp = signaturesTemp.retType[retTypeStr];
+
+                  for (const p of paramTypeStrs) {
+                    if (!signaturesTemp.params[p]) {
+                      signaturesTemp.params[p] = {
+                        functions: {},
+                        params: {},
+                      };
+                    }
+                    signaturesTemp = signaturesTemp.params[p];
+                  }
+
+                  signaturesTemp.functions[fnname] = true;
+                }
+              }
+            }
+            sigstr += `"${path}": ${JSON.stringify(signaturesMap)},`;
+          }
+
           // outstr += `declare function loadShader<ST extends "vertex" | "fragment">(path: "${path}", type: ST): {
           //     id: string,
           //     shaderType: ST,
@@ -51,6 +112,8 @@ async function generateStaticallyInferredShaders(fs: FilesystemAdaptor) {
     outstr +
     `\n\ntype LoadShaderOverloadMap = { ${mapstr} };
 
+\n\ntype ShaderFunctionSignaturesMap = { ${sigstr} };
+
 declare interface GLMessageClient {
 declare function loadShader<K extends keyof LoadShaderOverloadMap, ST extends "vertex" | "fragment">(
   path: K,
@@ -59,6 +122,12 @@ declare function loadShader<K extends keyof LoadShaderOverloadMap, ST extends "v
   id: string,
   shaderType: ST,
 } & LoadShaderOverloadMap[K];
+declare function loadShaderSource<K extends keyof LoadShaderOverloadMap>(
+path: K
+): {
+  spec: LoadShaderOverloadMap[K];
+  functions: ShaderFunctionSignaturesMap[K];
+}
 }
 `
   );

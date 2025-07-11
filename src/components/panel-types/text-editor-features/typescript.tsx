@@ -33,6 +33,14 @@ export async function typescript() {
 let tslibsLoaded = false;
 const tslibText: Record<string, string> = {};
 
+export async function getPrettier() {
+  return {
+    prettier: await import("prettier"),
+    typescript: await import("prettier/plugins/typescript"),
+    estree: (await import("prettier/plugins/estree")).default,
+  };
+}
+
 /// <reference path="../../../../types/global.d.ts" />
 
 async function formatTypescriptFragment(str: string) {

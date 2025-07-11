@@ -15,6 +15,7 @@ import {
   typescriptLanguage,
 } from "@codemirror/lang-javascript";
 import {
+  getPrettier,
   typescript,
   typescriptLanguageService,
 } from "./text-editor-features/typescript";
@@ -135,14 +136,54 @@ export function TextEditorPanel(props: {
               key: "Mod-s",
               run: (view) => {
                 (async () => {
-                  if (props.data.file) {
-                    await props.data.file.fs.writeFile(
-                      props.data.file.path,
-                      new Blob([view.state.sliceDoc(0, view.state.doc.length)])
+                  let saved = false;
+                  try {
+                    // const prettier = await import("prettier");
+                    const p = await getPrettier();
+                    const fmtresult = await p.prettier.formatWithCursor(
+                      view.state.sliceDoc(0, view.state.doc.length),
+                      {
+                        cursorOffset: view.state.selection.main.anchor,
+                        plugins: [p.typescript, p.estree],
+                        parser: "typescript",
+                      }
                     );
-                    setSaved(true);
+
+                    // autoformat typescript
+                    if (props.data.file?.path.endsWith(".ts")) {
+                      view.dispatch({
+                        changes: {
+                          from: 0,
+                          to: view.state.doc.length,
+                          insert: fmtresult.formatted,
+                        },
+                        selection: {
+                          anchor: fmtresult.cursorOffset,
+                        },
+                      });
+                    }
+
+                    if (props.data.file) {
+                      await props.data.file.fs.writeFile(
+                        props.data.file.path,
+                        new Blob([fmtresult.formatted])
+                      );
+                      saved = true;
+                      setSaved(true);
+                    }
+                  } catch (err) {
+                    if (props.data.file && !saved) {
+                      await props.data.file.fs.writeFile(
+                        props.data.file.path,
+                        new Blob([
+                          view.state.sliceDoc(0, view.state.doc.length),
+                        ])
+                      );
+                      setSaved(true);
+                    }
                   }
                 })();
+
                 return true;
               },
             },

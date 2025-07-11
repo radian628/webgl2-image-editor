@@ -267,7 +267,7 @@ export declare const ui: {
 export type UI = typeof ui;
 `])}],["GLMessageProtocol.d.ts",{type:"file",contents:new Blob([`import { FilesystemAdaptor } from "../../filesystem/FilesystemAdaptor";
 import { UIOption, UIReturnType } from "../GLMessageUI";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { CanvasSource, Output } from "mediabunny";
 export type GLPrimitive = {
     count: 1 | 2 | 3 | 4;
     type: "float" | "int" | "uint";
@@ -388,6 +388,9 @@ export type GLMessageContents = {
 } | {
     type: "read-file";
     filename: string;
+} | {
+    type: "get-shader-function-signatures";
+    filename: string;
 };
 export type GLMessageContentsType<T extends GLMessageContents["type"]> = GLMessageContents & {
     type: T;
@@ -455,9 +458,13 @@ export type GLMessageContext = {
             topRight: [number, number];
         };
     };
-    getffmpeg: () => Promise<FFmpeg>;
-    ffmpegFrameCount: {
-        current: number;
+    videoRef: {
+        current: {
+            output: Output;
+            canvasSource: CanvasSource;
+            frameIndex: number;
+            framerate: number;
+        };
     };
 };
 export type InterleavedBufferSpec = {
@@ -568,6 +575,7 @@ export declare function createGLMessageClient(send: <Msg extends GLMessage>(msg:
     readFile(filename: string): Promise<{
         file: Blob | undefined;
     }>;
+    loadShaderSource(filename: string): Promise<void>;
 };
 `])}],["EvalboxDefs.d.ts",{type:"file",contents:new Blob([`import * as userInterface from "./EvalboxUIWrapper";
 import { createGLMessageClient } from "./GLMessageClient";
@@ -581,6 +589,50 @@ declare global {
     const range: typeof glclient.range;
     type UniformType = glm.UniformType;
     type UniformsToValues<G extends Record<string, UniformType>> = glm.UniformsToValues<G>;
+    type ShaderFunctionSignatures = {
+        retTypes: Record<string, ShaderFunctionParameters>;
+    };
+    type ShaderFunctionParameters = {
+        params: Record<string, ShaderFunctionParameters>;
+        functions: Record<string, true>;
+    };
+    type IsValidComposite<T extends ShaderFunctionSignatures, FnName extends keyof T["retTypes"]["vec4"]["params"]["vec4"]["params"]["vec4"]["functions"]> = T["retTypes"]["vec4"]["params"]["vec4"]["params"]["vec4"]["functions"][FnName];
+    type GetFunctionsWithSignature<T extends ShaderFunctionSignatures, RetType extends string, ParamTypes extends string[]> = GetFunctionsWithSignatureParamsOnly<T["retTypes"][RetType], ParamTypes>;
+    type GetFunctionsWithSignatureParamsOnly<T extends ShaderFunctionParameters, ParamTypes extends string[]> = ParamTypes extends [
+        infer First extends string,
+        ...infer Rest extends string[]
+    ] ? GetFunctionsWithSignatureParamsOnly<T["params"][First], Rest> : keyof T["functions"];
+    type ExcludeSigs<A extends ShaderFunctionSignatures, B extends ShaderFunctionSignatures> = {
+        retTypes: {
+            [K in keyof A["retTypes"]]: ExcludeSigsParamsOnly<A["retTypes"][K], B["retTypes"][K]>;
+        };
+    };
+    type NoNeverProps<T> = {
+        [K in keyof T as T[K] extends never ? never : K]: T[K];
+    };
+    type ExcludeSigsParamsOnly<A extends ShaderFunctionParameters, B extends ShaderFunctionParameters> = {
+        params: {
+            [K in keyof A["params"]]: B["params"][K] extends ShaderFunctionParameters ? ExcludeSigsParamsOnly<A["params"][K], B["params"][K]> : A["params"][K];
+        };
+        functions: {
+            [K in Exclude<keyof A["functions"], keyof B["functions"]>]: true;
+        };
+    };
+    type KillEmptySigs<A extends ShaderFunctionSignatures> = {
+        retTypes: NoNeverProps<{
+            [K in keyof A["retTypes"]]: KillEmptySigsParamsOnly<KillEmptySigsParamsOnlyInner<A["retTypes"][K]>>;
+        }>;
+    };
+    type KillEmptySigsParamsOnly<A extends ShaderFunctionParameters> = {} extends NoNeverProps<A["functions"]> ? {} extends NoNeverProps<A["params"]> ? never : A : A;
+    type KillEmptySigsParamsOnlyInner<A extends ShaderFunctionParameters> = {
+        functions: A["functions"];
+        params: NoNeverProps<{
+            [K in keyof A["params"]]: KillEmptySigsParamsOnly<KillEmptySigsParamsOnlyInner<A["params"][K]>>;
+        }>;
+    };
+    type ContainsNoSignatures<A extends ShaderFunctionSignatures> = {
+        retTypes: {};
+    } extends A ? true : false;
 }
 export {};
 `])}]])}]])}],["filesystem",{type:"dir",contents:new Map([["FilesystemAdaptor.d.ts",{type:"file",contents:new Blob([`export type FilesystemAdaptor = {
@@ -673,24 +725,6 @@ export type RenderState = {
     framebuffers: Map<number, WebGLFramebuffer | null>;
 };
 export {};
-`])}]])}],["utils",{type:"dir",contents:new Map([["result.d.ts",{type:"file",contents:new Blob([`export type ResultSuccess<T> = {
-    readonly success: true;
-    readonly data: T;
-};
-export type ResultError<E> = {
-    readonly success: false;
-    readonly error: E;
-};
-export declare class Result<T, E> {
-    readonly data: ResultSuccess<T> | ResultError<E>;
-    constructor(data: ResultSuccess<T> | ResultError<E>);
-    unsafeExpectSuccess(): T;
-    mapS<T2>(f: (t: T) => T2): Result<T2, E>;
-    mapE<E2>(f: (e: E) => E2): Result<T, E2>;
-}
-export declare function ok<T, E>(data: T): Result<T, E>;
-export declare function err<T, E>(error: E): Result<T, E>;
-export declare function splitSuccessesAndErrors<T, E>(results: Result<T, E>[]): [T[], E[]];
 `])}]])}],["glsl-analyzer",{type:"dir",contents:new Map([["glsl-keywords.d.ts",{type:"file",contents:new Blob([`export declare const GLSL_KEYWORDS: string[];
 export declare const GLSL_SYMBOLS: string[];
 `])}],["lexer.d.ts",{type:"file",contents:new Blob([`export declare enum TokenKind {
@@ -1146,12 +1180,468 @@ export declare function tryParseGLSLRaw<T>(tokens: Token<TokenKind> | undefined,
 export declare function parseWith<T>(str: string, parser: Parser<TokenKind, T>): T;
 export declare function parseGLSLFragmentWithoutPreprocessing<T>(source: string, parser: Parser<TokenKind, T>): Result<T, ParserError>;
 export declare function parseGLSLWithoutPreprocessing(source: string): Result<ParserResult, ParserError>;
-`])}],["get-inputs-outputs.d.ts",{type:"file",contents:new Blob([`import { GLPrimitive, UniformType } from "../components/iframe-runtime/GLMessageProtocol";
+`])}],["formatter",{type:"dir",contents:new Map([["fmt-shared.d.ts",{type:"file",contents:new Blob([`export declare const unaryPrecedences: {
+    defined: number;
+    "++": number;
+    "--": number;
+    "+": number;
+    "-": number;
+    "~": number;
+    "!": number;
+};
+export declare const binaryPrecedences: {
+    defined: number;
+    "[]": number;
+    "*": number;
+    "/": number;
+    "%": number;
+    "+": number;
+    "-": number;
+    "<<": number;
+    ">>": number;
+    "<": number;
+    ">": number;
+    "<=": number;
+    ">=": number;
+    "==": number;
+    "!=": number;
+    "&": number;
+    "^": number;
+    "|": number;
+    "&&": number;
+    "^^": number;
+    "||": number;
+    ",": number;
+};
+export declare const minPrecedence = 10;
+export declare const maxPrecedence = 150;
+`])}],["fmt-packed.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Condition, Declaration, Expr, ExternalDeclaration, ForRestStatement, FullySpecifiedType, FunctionHeader, FunctionIdentifier, InitDeclaratorList, InterpolationQualifier, InvariantQualifier, LayoutQualifier, LayoutQualifierId, ParameterDeclaration, ParameterDeclarator, ParameterQualifier, ParameterTypeQualifier, Precision, SelectionRestStmt, SingleDeclaration, SingleDeclarationStart, Stmt, StorageQualifier, StructDeclaration, StructDeclarationList, StructDeclarator, StructDeclaratorList, StructSpecifier, TranslationUnit, TypeNoPrec, TypeQualifier, TypeSpecifier, TypeSpecifierNonarray } from "../parser";
+export declare namespace FormatGLSLPacked {
+    type ExprCtx = {
+        precedence: number;
+    };
+    function exprmax(e: ASTNode<Expr>): string;
+    function expr(e: ASTNode<Expr>, c: ExprCtx): string;
+    function functionCallIdentifier(i: FunctionIdentifier): string;
+    function translationUnit(tr: TranslationUnit): string;
+    function externalDeclaration(ed: ASTNode<ExternalDeclaration>): string;
+    function functionPrototype(fp: Commented<FunctionHeader>): string;
+    function fullySpecifiedType(fst: Commented<FullySpecifiedType>): string;
+    function typeQualifier(tq: Commented<TypeQualifier>): string;
+    function invariantQualifier(iq: Commented<InvariantQualifier>): string;
+    function layoutQualifier(lq: Commented<LayoutQualifier>): string;
+    function layoutQualifierId(lqid: Commented<LayoutQualifierId>): string;
+    function storageQualifier(sq: Commented<StorageQualifier>): string;
+    function interpolationQualifier(iq: Commented<InterpolationQualifier>): string;
+    function typeSpecifier(ts: Commented<TypeSpecifier>): string;
+    function typeSpecifierNoCommented(ts: TypeSpecifier): string;
+    function precision(p: Commented<Precision>): string;
+    function typeNoPrec(tnp: Commented<TypeNoPrec>): string;
+    function typeSpecifierNonarray(tsn: Commented<TypeSpecifierNonarray>): string;
+    function structSpecifier(ss: Commented<StructSpecifier>): string;
+    function parameterDeclaration(pd: Commented<ParameterDeclaration>): string;
+    function parameterDeclarator(pd: Commented<ParameterDeclarator>): string;
+    function parameterTypeQualifier(ptq: Commented<ParameterTypeQualifier>): string;
+    function parameterQualifier(pq: Commented<ParameterQualifier>): string;
+    function initDeclaratorList(idl: Commented<InitDeclaratorList>): string;
+    function singleDeclarationStart(sds: Commented<SingleDeclarationStart>): string;
+    function singleDeclaration(sd: Commented<SingleDeclaration>): string;
+    function declaration(d: Commented<Declaration>): string;
+    function structDeclarationList(sdl: Commented<StructDeclarationList>): string;
+    function structDeclaration(sd: Commented<StructDeclaration>): string;
+    function structDeclaratorList(sdl: Commented<StructDeclaratorList>): string;
+    function structDeclarator(sd: Commented<StructDeclarator>): string;
+    function statement(s: ASTNode<Stmt>): string;
+    function forRestStatement(frs: Commented<ForRestStatement>): string;
+    function selectionRestStmt(srs: Commented<SelectionRestStmt>): string;
+    function condition(c: Commented<Condition>): string;
+}
+`])}],["fmt-fancy.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Condition, Declaration, Expr, ExternalDeclaration, ForRestStatement, FullySpecifiedType, FunctionHeader, FunctionIdentifier, InitDeclaratorList, InterpolationQualifier, InvariantQualifier, LayoutQualifier, LayoutQualifierId, ParameterDeclaration, ParameterDeclarator, ParameterQualifier, ParameterTypeQualifier, Precision, SelectionRestStmt, SingleDeclaration, SingleDeclarationStart, Stmt, StorageQualifier, StructDeclaration, StructDeclarationList, StructDeclarator, StructDeclaratorList, StructSpecifier, TranslationUnit, TypeNoPrec, TypeQualifier, TypeSpecifier, TypeSpecifierNonarray } from "../parser";
+export type ExprCtx = {
+    precedence: number;
+};
+export type NodeCtx = {
+    indent: number;
+};
+export declare const defaultNodeCtx: {
+    indent: number;
+};
+export declare const makeFancyFormatter: (lineLengthLimit?: number, indentAmount?: number) => {
+    exprmax(e: ASTNode<Expr>): any;
+    expr(e: ASTNode<Expr>, c: ExprCtx): string;
+    functionCallIdentifier(i: FunctionIdentifier): string;
+    typeSpecifier(ts: Commented<TypeSpecifier>): string;
+    typeSpecifierNoCommented(ts: TypeSpecifier): string;
+    precision(p: Commented<Precision>): string;
+    typeNoPrec(tnp: Commented<TypeNoPrec>): string;
+    typeSpecifierNonarray(tsn: Commented<TypeSpecifierNonarray>): string;
+    structSpecifier(ss: Commented<StructSpecifier>): string;
+    structDeclarationList(sdl: Commented<StructDeclarationList>): string;
+    structDeclaration(sd: Commented<StructDeclaration>): string;
+    structDeclaratorList(sdl: Commented<StructDeclaratorList>): string;
+    structDeclarator(sd: Commented<StructDeclarator>): string;
+    parameterDeclaration(pd: Commented<ParameterDeclaration>): string;
+    parameterDeclarator(pd: Commented<ParameterDeclarator>): string;
+    parameterTypeQualifier(ptq: Commented<ParameterTypeQualifier>): string;
+    parameterQualifier(pq: Commented<ParameterQualifier>): string;
+    typeQualifier(tq: Commented<TypeQualifier>): string;
+    invariantQualifier(iq: Commented<InvariantQualifier>): string;
+    layoutQualifier(lq: Commented<LayoutQualifier>): string;
+    layoutQualifierId(lqid: Commented<LayoutQualifierId>): string;
+    storageQualifier(sq: Commented<StorageQualifier>): string;
+    interpolationQualifier(iq: Commented<InterpolationQualifier>): string;
+    initDeclaratorList(idl: Commented<InitDeclaratorList>): string;
+    singleDeclarationStart(sds: Commented<SingleDeclarationStart>): string;
+    singleDeclaration(sd: Commented<SingleDeclaration>): string;
+    declaration(d: Commented<Declaration>): string;
+    statement(s: ASTNode<Stmt>, ctx?: NodeCtx): string;
+    forRestStatement(frs: Commented<ForRestStatement>): string;
+    selectionRestStmt(srs: Commented<SelectionRestStmt>): string;
+    condition(c: Commented<Condition>): any;
+    fullySpecifiedType(fst: Commented<FullySpecifiedType>): string;
+    functionPrototype(fp: Commented<FunctionHeader>): string;
+    translationUnit(tr: TranslationUnit): string;
+    externalDeclaration(ed: ASTNode<ExternalDeclaration>): string;
+};
+`])}]])}],["glsl-ast-utils.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Declaration, Expr, ExternalDeclaration, ExternalDeclarationFunction, ParameterDeclaration, Stmt, StructSpecifier, TranslationUnit } from "./parser";
+export declare function getFunctions(tu: TranslationUnit): Commented<ExternalDeclarationFunction>[];
+export declare function getParameters(fn: Commented<ExternalDeclarationFunction>): Commented<Commented<ParameterDeclaration>[]>;
+export declare function getNamedInputParameters(fn: Commented<ExternalDeclarationFunction>): {
+    name: string;
+    param: Commented<ParameterDeclaration>;
+}[];
+export declare function getNamedOutputParameters(fn: Commented<ExternalDeclarationFunction>): {
+    name: string;
+    param: Commented<ParameterDeclaration>;
+}[];
+export declare function mapOverJson(json: any, map: (json: any) => any): any;
+export declare function mapAST<T>(t: T, map: {
+    expr?(expr: ASTNode<Expr>, mapInner: (expr: ASTNode<Expr>) => ASTNode<Expr>): ASTNode<Expr>;
+    stmt?(stmt: ASTNode<Stmt>, mapInner: (stmt: ASTNode<Stmt>) => ASTNode<Stmt>): ASTNode<Stmt>;
+    decl?(decl: ASTNode<Declaration>, mapInner: (decl: ASTNode<Declaration>) => ASTNode<Declaration>): Commented<Declaration>;
+    extDecl?(extDecl: ASTNode<ExternalDeclaration>, mapInner: (extDecl: ASTNode<ExternalDeclaration>) => ASTNode<ExternalDeclaration>): ASTNode<ExternalDeclaration>;
+    struct?(struct: StructSpecifier, mapInner: (struct: StructSpecifier) => StructSpecifier): StructSpecifier;
+    error?(err: ASTNode<{
+        _isError: true;
+        why: string;
+    }>, mapInner: (err: ASTNode<{
+        _isError: true;
+        why: string;
+    }>) => ASTNode<{
+        _isError: true;
+        why: string;
+    }>): ASTNode<{
+        _isError: true;
+        why: string;
+    }>;
+}): T;
+export declare function renameSymbols<T>(t: T, rename: (s: string) => string): T;
+export declare function mapGlobalSymbols(t: TranslationUnit, rename: (str: string) => string): TranslationUnit;
+export declare function mapAllSymbolsDefinedByStmt(s: ASTNode<Stmt>, rename: (str: string) => string): ASTNode<Stmt>;
+export declare function mapAllSymbolsDefinedInsideStmt(s: ASTNode<Stmt>, rename: (str: string) => string): ASTNode<Stmt>;
+export declare function getAllStatementsInsideStmt(s: ASTNode<Stmt>): ASTNode<Stmt>[];
+export declare function mapAllSymbolsDefinedInsideExtDecl(ed: ASTNode<ExternalDeclaration>, rename: (s: string) => string): ASTNode<ExternalDeclaration>;
+export declare function mapAllSymbolsDefinedByExtDecl(ed: ASTNode<ExternalDeclaration>, rename: (s: string) => string): ASTNode<ExternalDeclaration>;
+export declare function mapAllStatementsInsideExtDecl(ed: ASTNode<ExternalDeclaration>, map: (s: ASTNode<Stmt>) => ASTNode<Stmt>): ASTNode<ExternalDeclaration>;
+`])}],["langserver",{type:"dir",contents:new Map([["validate-swizzle.d.ts",{type:"file",contents:new Blob([`export declare function swizzleCharToIndex(char: string): number;
+export declare function getSwizzleRegex(arity: 2 | 3 | 4): RegExp;
+export declare function permute<T>(arr: T[]): T[][];
+export declare function powerSet<T>(arr: T[]): T[][];
+export declare function getNonemptyStringPermutations(str: string): string[];
+export declare const lValueSwizzles: {
+    2: Set<string>;
+    3: Set<string>;
+    4: Set<string>;
+};
+`])}],["evaluator.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Expr, FullySpecifiedType, Stmt, TranslationUnit } from "../parser";
+import { Scope } from "./glsl-language-server";
+export type GLSLValue = {
+    type: "vector";
+    vectorType: "int" | "float" | "uint" | "bool";
+    size: 1 | 2 | 3 | 4;
+    value: number[];
+} | {
+    type: "array";
+    value: GLSLValue[];
+} | {
+    type: "struct";
+    structType: string;
+    fields: Map<string, GLSLValue>;
+} | {
+    type: "error";
+} | {
+    type: "uninitialized";
+    intendedType: FullySpecifiedType;
+};
+declare function vec(vectorType: "int" | "float" | "uint" | "bool", size: 1 | 2 | 3 | 4, isConst: boolean, value: number[]): GLSLValue;
+export declare const constructVectorValue: typeof vec;
+export type StackFrame = {
+    correspondingScopes: Scope[];
+    values: Map<string, {
+        value: GLSLValue;
+        type: FullySpecifiedType;
+    } | undefined>;
+    returnValue?: GLSLValue;
+    isFunctionRoot?: boolean;
+};
+export declare function isConst(expr: ASTNode<Expr>, scopeChain: Scope[]): boolean;
+export declare function isLValue(expr: ASTNode<Expr>, scopeChain: Scope[]): boolean;
+export declare function assignToLValue(lvalue: ASTNode<Expr>, stack: StackFrame[], assign: (oldvalue: GLSLValue, newvalue: GLSLValue) => GLSLValue, newvalue: GLSLValue): GLSLValue;
+export declare function evaluateExpression(expr: ASTNode<Expr>, stack: StackFrame[]): GLSLValue;
+export declare function evalexpr(expr: ASTNode<Expr>, stack: StackFrame[]): GLSLValue;
+type EvaluateStatementResult = {
+    returnValue?: GLSLValue;
+    shouldReturn?: boolean;
+    shouldBreak?: boolean;
+    shouldContinue?: boolean;
+    caseResult?: GLSLValue;
+    execNext?: ASTNode<Stmt>[];
+    defaultCase?: boolean;
+    discard?: boolean;
+};
+export declare function evaluateStatement(stmt: ASTNode<Stmt>, stack: StackFrame[]): EvaluateStatementResult;
+export declare function evaluateTranslationUnit(tu: TranslationUnit, scopes: Scope[], entryPoint: string): StackFrame;
+export {};
+`])}],["glsltype.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Expr, FullySpecifiedType } from "../parser";
+import { Scope } from "./glsl-language-server";
+import { TypeError } from "./typecheck";
+export type PType = "int" | "uint" | "bool" | "float";
+export type Arity = 1 | 2 | 3 | 4;
+export type GLSLType = {
+    type: "primitive";
+    arity: Arity;
+    ptype: PType;
+} | {
+    type: "array";
+    elementType: GLSLType;
+    size: number;
+} | {
+    type: "struct";
+    name: string;
+};
+export declare const builtinTypes: {
+    int: GLSLType;
+    float: GLSLType;
+    uint: GLSLType;
+    bool: GLSLType;
+    vec2: GLSLType;
+    ivec2: GLSLType;
+    uvec2: GLSLType;
+    bvec2: GLSLType;
+    vec3: GLSLType;
+    ivec3: GLSLType;
+    uvec3: GLSLType;
+    bvec3: GLSLType;
+    vec4: GLSLType;
+    ivec4: GLSLType;
+    uvec4: GLSLType;
+    bvec4: GLSLType;
+};
+export declare function isSameType(a: GLSLType | undefined, b: GLSLType | undefined): boolean;
+export declare function stringifyType(type: GLSLType): string;
+export declare function matchesPrimitiveTypes<P extends PType, A extends Arity>(type: GLSLType | undefined, ptypes?: P[], arities?: A[]): type is {
+    type: "primitive";
+    ptype: P;
+    arity: A;
+};
+export declare function isInt(type: GLSLType | undefined): type is {
+    type: "primitive";
+    ptype: "int";
+    arity: Arity;
+};
+export declare function isUint(type: GLSLType | undefined): type is {
+    type: "primitive";
+    ptype: "uint";
+    arity: Arity;
+};
+export declare function isNumericalVector(type: GLSLType | undefined): type is {
+    type: "primitive";
+    ptype: "float" | "int" | "uint";
+    arity: Arity;
+};
+export declare function isScalar(type: GLSLType | undefined): type is {
+    type: "primitive";
+    ptype: PType;
+    arity: 1;
+};
+export declare function isIntegralVector(type: GLSLType | undefined): type is {
+    type: "primitive";
+    ptype: "int" | "uint";
+    arity: Arity;
+};
+export declare function getArity(type: GLSLType | undefined): Arity | undefined;
+export declare function getPType(type: GLSLType | undefined): PType | undefined;
+export type TypeResult = {
+    type?: GLSLType;
+    errors: TypeError;
+};
+export declare function convertType(type: FullySpecifiedType, scopes: Scope[], unsizedArrayInitializer?: {
+    type: "expr";
+    expr: ASTNode<Expr>;
+} | {
+    type: "num";
+    size: number;
+}): TypeResult;
+`])}],["typecheck.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Expr, FullySpecifiedType, ParameterDeclaration, TypeNoPrec } from "../parser";
+import { Scope } from "./glsl-language-server";
+import { TypeResult } from "./glsltype";
+export declare function isFloatOrFloatVector(t: FullySpecifiedType | undefined): boolean;
+export declare function isSignedIntOrIntVector(t: FullySpecifiedType | undefined): boolean;
+export declare function isUnsignedIntOrIntVector(t: FullySpecifiedType | undefined): boolean;
+export declare function isBoolOrBoolVector(t: FullySpecifiedType | undefined): boolean;
+export declare function isIntOrIntVector(t: FullySpecifiedType | undefined): boolean;
+export declare function isNumberOrNumberVector(t: FullySpecifiedType | undefined): boolean;
+export declare function isPrimitiveOrPrimitiveVector(t: FullySpecifiedType | undefined): boolean;
+export declare function getPrimitiveStringFromTypeAndArity(type: "float" | "int" | "uint" | "bool", arity: 1 | 2 | 3 | 4): string;
+export declare function getPrimitiveFromTypeAndArity(type: "float" | "int" | "uint" | "bool", arity: 1 | 2 | 3 | 4): FullySpecifiedType;
+export declare function isArrayType(t: FullySpecifiedType | undefined): boolean;
+export declare function getTypePrimitiveCategory(t: FullySpecifiedType | undefined): "float" | "int" | "uint" | "bool" | undefined;
+export declare function getTypePrimitiveArity(t: FullySpecifiedType | undefined): 1 | 2 | 3 | 4 | undefined;
+export declare function builtinType(name: string, array?: TypeNoPrec["arrayType"]): FullySpecifiedType;
+export type TypeError = {
+    start: number;
+    end: number;
+    why: string;
+}[];
+export declare function nodeTypeErr(node: ASTNode<any>, why: string): TypeError;
+export declare function getFunctionParamType(param: ParameterDeclaration): FullySpecifiedType;
+export declare function getFunctionParamName(param: ParameterDeclaration): string | undefined;
+export declare function getFunctionParamTypeNode(param: ASTNode<ParameterDeclaration>): Commented<FullySpecifiedType>;
+export declare function unarrayType(type: FullySpecifiedType): FullySpecifiedType;
+export declare function arrayifyType(type: FullySpecifiedType, size?: number): FullySpecifiedType;
+export declare function getExprType(expr: ASTNode<Expr>, scopeChain: Scope[]): TypeResult;
+`])}],["builtins.d.ts",{type:"file",contents:new Blob([`import { Scope } from "./glsl-language-server";
+export declare const builtinSource: string;
+export declare function getGLSLBuiltinsForReal(start: number, end: number, innerScopes: Scope[], fallthrough?: boolean): Promise<Scope>;
+export declare function getGLSLBuiltins(start: number, end: number, innerScopes: Scope[], fallthrough?: boolean): Promise<Scope>;
+`])}],["glsl-language-server.d.ts",{type:"file",contents:new Blob([`import { FilesystemAdaptor } from "../../filesystem/FilesystemAdaptor";
+import { ASTNode, Commented, Expr, ExternalDeclarationFunction, FullySpecifiedType, FunctionCallExpr, FunctionHeader, TranslationUnit } from "../parser";
+import { GLSLValue, StackFrame } from "./evaluator";
+import { GLSLType, TypeResult } from "./glsltype";
+export type GLSLAutocompleteOption = {
+    str: string;
+    type: "variable" | "function" | "type" | "keyword";
+};
+export type ScopeItem = {
+    dataType: Commented<FullySpecifiedType>;
+    name: Commented<string>;
+    notUserVisible?: boolean;
+    type: "variable";
+} | {
+    type: "function";
+    globalScope: Scope;
+    notUserVisible?: boolean;
+    signatures: {
+        type: "list";
+        list: {
+            fndef: Commented<ExternalDeclarationFunction>;
+            scope: Scope;
+        }[];
+    } | {
+        type: "function";
+        typesig: (fncall: ASTNode<FunctionCallExpr>, params: {
+            expr: ASTNode<Expr>;
+            type: GLSLType | undefined;
+        }[]) => TypeResult;
+        evaluate: (params: GLSLValue[]) => GLSLValue;
+    };
+};
+export type Scope = {
+    items: Map<string, ScopeItem>;
+    innerScopes: Scope[];
+    innerScopeMap: Map<any, Scope>;
+    start: number;
+    end: number;
+};
+export type GLSLSemanticAnalysis = {
+    translationUnit: TranslationUnit;
+    globalScope: Scope;
+    builtinScope: Scope;
+};
+export type GLSLSignatureHelp = {
+    name: string;
+    signature: Commented<FunctionHeader>;
+};
+export declare function scopeFind(scopes: Scope[], name: string): ScopeItem | undefined;
+export declare function getScopeOf(scopes: Scope[], name: string): {
+    scope: Scope;
+    item: ScopeItem;
+} | undefined;
+export declare function getFunctionCallName(call: FunctionCallExpr): string;
+export type GLSLDiagnostic = {
+    start: number;
+    end: number;
+    why: string;
+};
+export declare function makeGLSLLanguageServer(context: {
+    fs: FilesystemAdaptor;
+}): {
+    semanticallyAnalyzeGLSL(file: string, noStdlib: boolean, inject?: Map<string, ScopeItem>): Promise<GLSLSemanticAnalysis>;
+    evaluate(file: string, functionName: string): Promise<StackFrame | undefined>;
+    getDiagnostics(file: string, noStdlib?: boolean, inject?: Map<string, ScopeItem>): Promise<GLSLDiagnostic[]>;
+    getSignatureHelp(file: string, pos: number): Promise<GLSLSignatureHelp | undefined>;
+    getAutocompleteOptions(file: string, pos: number): Promise<GLSLAutocompleteOption[]>;
+};
+`])}]])}],["get-inputs-outputs.d.ts",{type:"file",contents:new Blob([`import { GLPrimitive, UniformType } from "../components/iframe-runtime/GLMessageProtocol";
 import { TranslationUnit } from "./parser";
 export declare function getInputsOutputsAndUniforms(tu: TranslationUnit): {
     uniforms: Record<string, UniformType>;
     inputs: Record<string, GLPrimitive>;
     outputs: Record<string, GLPrimitive>;
 };
+`])}]])}],["utils",{type:"dir",contents:new Map([["result.d.ts",{type:"file",contents:new Blob([`export type ResultSuccess<T> = {
+    readonly success: true;
+    readonly data: T;
+};
+export type ResultError<E> = {
+    readonly success: false;
+    readonly error: E;
+};
+export declare class Result<T, E> {
+    readonly data: ResultSuccess<T> | ResultError<E>;
+    constructor(data: ResultSuccess<T> | ResultError<E>);
+    unsafeExpectSuccess(): T;
+    mapS<T2>(f: (t: T) => T2): Result<T2, E>;
+    mapE<E2>(f: (e: E) => E2): Result<T, E2>;
+}
+export declare function ok<T, E>(data: T): Result<T, E>;
+export declare function err<T, E>(error: E): Result<T, E>;
+export declare function splitSuccessesAndErrors<T, E>(results: Result<T, E>[]): [T[], E[]];
+`])}],["lens.d.ts",{type:"file",contents:new Blob([`type NestedKeyOf<T, K> = K extends [infer K1, ...infer Kr] ? K1 extends keyof T ? NestedKeyOf<T[K1], Kr> : never : K extends [] ? T : never;
+export declare function setDeep<T, K extends [...string[]]>(t: T, path: K, v: (oldValue: NestedKeyOf<T, K>) => NestedKeyOf<T, K>): T;
+type StringKeys<T> = {
+    [Key in keyof T]: T[Key] extends string ? T[Key] : never;
+};
+type LensValue<T, Root> = (cb: (t: T) => T) => Root;
+type LensPartial<T, Root> = (cb: (t: LensObject<T>) => Partial<T>) => Root;
+type LensEach<T, Root, I> = (cb: (item: LensObject<I>, index: number, array: I[]) => I) => Root;
+type LensMatch<T, Root> = <K extends keyof StringKeys<T>>(prop: K, matchers: ({
+    [Key in (T[K] & string) | "$d"]?: Key extends "$d" ? (t: LensObject<T>) => T : (t: LensObject<T & {
+        [Key2 in K]: Key;
+    }>) => T;
+} & {
+    $d: (t: LensObject<T>) => T;
+}) | {
+    [Key in T[K] & string]: (t: LensObject<T & {
+        [Key2 in K]: Key;
+    }>) => T;
+}) => Root;
+type LensGet<T, Root> = <G>(cb: (t: T) => G) => G;
+type WithLensMethods<T, Root> = T & {
+    $: LensValue<T, Root>;
+    $p: LensPartial<T, Root>;
+    $f: LensObject<T, T>;
+    $m: LensMatch<T, Root>;
+    $g: LensGet<T, Root>;
+} & (T extends (infer I)[] ? {
+    $e: LensEach<T, Root, I>;
+} : {});
+type LensObject<T, Root = T> = {
+    [K in keyof WithLensMethods<T, Root>]-?: K extends "$" ? LensValue<T, Root> : K extends "$p" ? LensPartial<T, Root> : K extends "$f" ? LensObject<T, T> : K extends "$e" ? T extends (infer I)[] ? LensEach<T, Root, I> : never : K extends "$m" ? LensMatch<T, Root> : K extends "$g" ? LensGet<T, Root> : undefined extends WithLensMethods<T, Root>[K] ? LensObject<WithLensMethods<T, Root>[K], Root> : LensObject<WithLensMethods<T, Root>[K], Root>;
+};
+export declare function lens<T, R = T>(t: T, path?: string[], root?: any): LensObject<T, R>;
+export declare function id<T>(t: T): T;
+export declare function delens<T>(t: LensObject<T>): T;
+export {};
 `])}]])}]])}]])};var r=e;export{r as default};
 //# sourceMappingURL=EvalboxDefsWrapper.js.map

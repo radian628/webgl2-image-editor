@@ -94,6 +94,11 @@ export function ImagePreviewPanel(props: {
 
   const ffmpegFrameCountRef = useRef(0);
 
+  const videoRef = useRef<GLMessageContext["videoRef"]["current"]>({
+    frameIndex: 0,
+    framerate: 30,
+  } as GLMessageContext["videoRef"]["current"]);
+
   useEffect(() => {
     zoomPanRef.current.bottomLeft = controls.panBottomLeft;
     zoomPanRef.current.topRight = controls.panTopRight;
@@ -315,8 +320,7 @@ export function ImagePreviewPanel(props: {
           canvas,
           container: { current: container },
           zoomPan: zoomPanRef,
-          ffmpegFrameCount: ffmpegFrameCountRef,
-          getffmpeg: getffmpeg,
+          videoRef,
         };
 
         (async () => {
