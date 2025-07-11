@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../src/components/gl-message-ui/GLMessageUI.css"],
+  "sourcesContent": [".glm-numerical-field {\r\n  display: flex;\r\n  .number-field {\r\n    width: 4em;\r\n  }\r\n}\r\n\r\n.glm-menu-field {\r\n  display: grid;\r\n  grid-template-columns: min-content max-content;\r\n  border-left: 1px solid var(--border-color);\r\n  margin-left: 5px;\r\n  padding-left: 5px;\r\n\r\n  > .glm-menu-property {\r\n    display: grid;\r\n    grid-template-columns: subgrid;\r\n    grid-column-start: 1;\r\n    grid-column-end: 3;\r\n\r\n    > label {\r\n      width: fit-content;\r\n      margin-right: 10px;\r\n    }\r\n  }\r\n\r\n  > .glm-menu-property:has(.glm-menu-field) {\r\n    > label {\r\n      grid-column-start: 1;\r\n      grid-column-end: 3;\r\n    }\r\n\r\n    > .glm-menu-field {\r\n      grid-template-columns: subgrid;\r\n      margin-bottom: 8px;\r\n      margin-top: 8px;\r\n      grid-column-start: 1;\r\n      grid-column-end: 3;\r\n    }\r\n  }\r\n}\r\n"],
+  "mappings": "AAAA,CAAC,oBACC,QAAS,KACT,CAAC,aACC,MAAO,GACT,CACF,CAEA,CAAC,eACC,QAAS,KACT,sBAAuB,YAAY,YACnC,YAAa,IAAI,MAAM,IAAI,gBAC3B,YAAa,IACb,aAAc,IAEd,CAAE,CAAC,kBACD,QAAS,KACT,sBAAuB,QACvB,kBAAmB,EACnB,gBAAiB,EAEjB,CAAE,MACA,MAAO,YACP,aAAc,IAChB,CACF,CAEA,CAAE,CAZC,iBAYiB,KAAK,CAnB1B,gBAoBG,CAAE,MACA,kBAAmB,EACnB,gBAAiB,CACnB,CAEA,CAAE,CAzBL,eA0BK,sBAAuB,QACvB,cAAe,IACf,WAAY,IACZ,kBAAmB,EACnB,gBAAiB,CACnB,CACF,CACF",
+  "names": []
+}

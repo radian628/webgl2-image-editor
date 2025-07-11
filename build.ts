@@ -295,7 +295,7 @@ function buildProgressPlugin(name: string): esbuild.Plugin {
 
 (async () => {
   const ctx = await esbuild.context({
-    entryPoints: ["src/index.tsx"],
+    entryPoints: ["src/main-page/index.tsx"],
     outdir: "dist",
     bundle: true,
     minify: true,
@@ -337,8 +337,8 @@ function buildProgressPlugin(name: string): esbuild.Plugin {
   });
 
   const ctxEvalbox = await esbuild.context({
-    entryPoints: ["src/components/iframe-runtime/EvalboxGLWrapper.ts"],
-    outdir: "dist/components/iframe-runtime",
+    entryPoints: ["src/evalbox/runtime/EvalboxGLWrapper.ts"],
+    outdir: "dist/evalbox/runtime",
     bundle: true,
     minify: true,
     sourcemap: true,
@@ -347,9 +347,7 @@ function buildProgressPlugin(name: string): esbuild.Plugin {
   });
 
   const ctxTypescriptLibraries = await esbuild.context({
-    entryPoints: [
-      "src/components/panel-types/text-editor-features/typescript-libraries.ts",
-    ],
+    entryPoints: ["src/languages/typescript/editor/typescript-libraries.ts"],
     outdir: "dist",
     bundle: true,
     minify: true,
@@ -359,7 +357,7 @@ function buildProgressPlugin(name: string): esbuild.Plugin {
   });
 
   const ctxEvalboxDefs = await esbuild.context({
-    entryPoints: ["src/components/iframe-runtime/EvalboxDefsWrapper.ts"],
+    entryPoints: ["src/evalbox/definitions/EvalboxDefsWrapper.ts"],
     outdir: "dist",
     bundle: true,
     minify: true,

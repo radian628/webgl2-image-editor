@@ -1,4 +1,4 @@
-var e={type:"dir",contents:new Map([["src",{type:"dir",contents:new Map([["components",{type:"dir",contents:new Map([["fields",{type:"dir",contents:new Map([["NumberField.d.ts",{type:"file",contents:new Blob([`type NumberInputProps = {
+var e={type:"dir",contents:new Map([["src",{type:"dir",contents:new Map([["components",{type:"dir",contents:new Map([["input-fields",{type:"dir",contents:new Map([["NumberField.d.ts",{type:"file",contents:new Blob([`type NumberInputProps = {
     setValue: (x: number) => void;
     value: number;
     options: {
@@ -10,7 +10,7 @@ var e={type:"dir",contents:new Map([["src",{type:"dir",contents:new Map([["compo
 };
 export declare function NumberField(props: NumberInputProps): any;
 export {};
-`])}]])}],["GLMessageUI.d.ts",{type:"file",contents:new Blob([`import "./GLMessageUI.css";
+`])}]])}],["gl-message-ui",{type:"dir",contents:new Map([["GLMessageUI.d.ts",{type:"file",contents:new Blob([`import "./GLMessageUI.css";
 export type UIOptionMenu = {
     type: "menu";
     name?: string;
@@ -123,7 +123,7 @@ type GLMessageUIProps<UI extends UIOption> = {
 export declare function GLMessageUIField<UI extends UIOption>(props: GLMessageUIProps<UI>): any;
 export declare function getGLMessageUIDefaultValue<UI extends UIOption>(ui: UI): UIReturnType<UI>;
 export {};
-`])}],["iframe-runtime",{type:"dir",contents:new Map([["EvalboxUIWrapper.d.ts",{type:"file",contents:new Blob([`import { UIOption } from "../GLMessageUI";
+`])}]])}]])}],["evalbox",{type:"dir",contents:new Map([["runtime",{type:"dir",contents:new Map([["EvalboxUIWrapper.d.ts",{type:"file",contents:new Blob([`import { UIOption } from "../../components/gl-message-ui/GLMessageUI";
 export type FloatOptions = {
     min?: number;
     max?: number;
@@ -265,228 +265,8 @@ export declare const ui: {
     };
 };
 export type UI = typeof ui;
-`])}],["GLMessageProtocol.d.ts",{type:"file",contents:new Blob([`import { FilesystemAdaptor } from "../../filesystem/FilesystemAdaptor";
-import { UIOption, UIReturnType } from "../GLMessageUI";
-import { CanvasSource, Output } from "mediabunny";
-export type GLPrimitive = {
-    count: 1 | 2 | 3 | 4;
-    type: "float" | "int" | "uint";
-};
-export type UniformType = GLPrimitive | {
-    type: "sampler";
-    dimensionality: "2D" | "3D" | "2DArray" | "Cube";
-    samplerType: "float" | "int" | "uint";
-} | {
-    type: "sampler";
-    samplerType: "shadow";
-    dimensionality: "2D" | "2DArray" | "Cube";
-};
-export type GLPrimitiveToNumber<G extends GLPrimitive> = G["count"] extends 1 ? number : G["count"] extends 2 ? [number, number] : G["count"] extends 3 ? [number, number, number] : [number, number, number, number];
-export type UniformTypeValue<G extends UniformType> = G extends GLPrimitive ? GLPrimitiveToNumber<G> : TextureRef;
-export type UniformsToValues<G extends Record<string, UniformType>> = {
-    [K in keyof G]: UniformTypeValue<G[K]>;
-};
-export declare function typeNameToGLPrimitive(typename: string): GLPrimitive | undefined;
-export type ShaderSource = {
-    inputs: Record<string, GLPrimitive>;
-    outputs: Record<string, GLPrimitive>;
-    uniforms: Record<string, UniformType>;
-    shaderType: "vertex" | "fragment";
-    text: string;
-};
-export type ShaderRef<Type extends "vertex" | "fragment"> = {
-    inputs: Record<string, GLPrimitive>;
-    outputs: Record<string, GLPrimitive>;
-    uniforms: Record<string, UniformType>;
-    shaderType: Type;
-    id: string;
-};
-export type ProgramRef = {
-    inputs: Record<string, GLPrimitive>;
-    outputs: Record<string, GLPrimitive>;
-    uniforms: Record<string, UniformType>;
-    id: string;
-};
-export type TextureDimension = {
-    type: "dynamic";
-    pixels: number;
-};
-export type TextureRef = {
-    id: string;
-    width: TextureDimension;
-    height: TextureDimension;
-    dimensionality: "2D" | "3D" | "2DArray" | "Cube";
-    format: "float" | "int" | "uint";
-};
-export type GLMessageContents = {
-    type: "clear";
-    color?: [number, number, number, number];
-    depth?: number;
-    stencil?: number;
-} | {
-    type: "create-buffer";
-    id: string;
-    source: {
-        type: "array";
-        spec: InterleavedBufferSpec;
-    };
-} | {
-    type: "create-shader";
-    source: ShaderSource;
-    id: string;
-} | {
-    type: "create-program";
-    vertex: ShaderRef<"vertex">;
-    fragment: ShaderRef<"fragment">;
-    id: string;
-} | {
-    type: "draw";
-    program: ProgramRef;
-    inputs: Record<string, BufferInputRef>;
-    outputs: Record<string, TextureRef | null>;
-    uniforms: Record<string, number | number[] | TextureRef>;
-    count: number;
-} | {
-    type: "load-file";
-    path: string;
-} | {
-    type: "create-texture";
-    pixels?: ArrayBuffer;
-    width: number;
-    height: number;
-    depth?: number;
-    internalformat: GLenum;
-    minFilter: GLenum;
-    magFilter: GLenum;
-    wrapS: GLenum;
-    wrapT: GLenum;
-    id: string;
-} | {
-    type: "create-menu";
-    id: string;
-    menu: UIOption;
-} | {
-    type: "poll-menu";
-    id: string;
-    menu: MenuRef;
-} | {
-    type: "resize";
-    width: number;
-    height: number;
-} | {
-    type: "get-window-size";
-} | {
-    type: "get-pan-and-zoom-bounds";
-} | {
-    type: "reset-encoder";
-} | {
-    type: "add-frame";
-} | {
-    type: "render-video";
-    filename: string;
-    audioLink?: string;
-} | {
-    type: "read-file";
-    filename: string;
-} | {
-    type: "get-shader-function-signatures";
-    filename: string;
-};
-export type GLMessageContentsType<T extends GLMessageContents["type"]> = GLMessageContents & {
-    type: T;
-};
-export type GLMessageType<T extends GLMessageContents["type"]> = {
-    id: string;
-    contents: GLMessageContentsType<T>;
-};
-export type GLMessage = {
-    contents: GLMessageContents;
-    id: string;
-};
-export type MenuRef = {
-    id: string;
-    menu: UIOption;
-};
-export type GLMessageResponseContents<Msg extends GLMessage> = Msg extends GLMessageType<"create-buffer"> ? {
-    spec: Msg["contents"]["source"]["spec"];
-    id: string;
-} : Msg extends GLMessageType<"create-shader"> ? {
-    inputs: Msg["contents"]["source"]["inputs"];
-    outputs: Msg["contents"]["source"]["outputs"];
-    uniforms: Msg["contents"]["source"]["uniforms"];
-    shaderType: Msg["contents"]["source"]["shaderType"];
-    id: Msg["contents"]["id"];
-} : Msg extends GLMessageType<"create-program"> ? {
-    inputs: Msg["contents"]["vertex"]["inputs"];
-    outputs: Msg["contents"]["fragment"]["outputs"];
-    uniforms: Msg["contents"]["vertex"]["uniforms"] & Msg["contents"]["fragment"]["uniforms"];
-    id: Msg["contents"]["id"];
-} : Msg extends GLMessageType<"load-file"> ? {
-    file: Blob | undefined;
-} : Msg extends GLMessageType<"create-texture"> ? TextureRef : Msg extends GLMessageType<"create-menu"> ? MenuRef : Msg extends GLMessageType<"poll-menu"> ? UIReturnType<Msg["contents"]["menu"]["menu"]> : Msg extends GLMessageType<"get-window-size"> ? {
-    width: number;
-    height: number;
-} : Msg extends GLMessageType<"get-pan-and-zoom-bounds"> ? {
-    bottomLeft: [number, number];
-    topRight: [number, number];
-} : Msg extends GLMessageType<"read-file"> ? {
-    file: Blob | undefined;
-} : undefined;
-export type GLMessageResponse<Msg extends GLMessage> = {
-    id: string;
-    content: GLMessageResponseContents<Msg>;
-    timestamp: number;
-};
-export type GLMessageContext = {
-    gl: WebGL2RenderingContext;
-    buffers: Map<string, WebGLBuffer>;
-    shaders: Map<string, WebGLShader>;
-    programs: Map<string, WebGLProgram>;
-    textures: Map<string, WebGLTexture>;
-    menus: Map<string, {
-        spec: UIOption;
-        value: any;
-    }>;
-    fs: FilesystemAdaptor;
-    canvas: HTMLCanvasElement;
-    container: {
-        current: HTMLElement | null;
-    };
-    zoomPan: {
-        current: {
-            bottomLeft: [number, number];
-            topRight: [number, number];
-        };
-    };
-    videoRef: {
-        current: {
-            output: Output;
-            canvasSource: CanvasSource;
-            frameIndex: number;
-            framerate: number;
-        };
-    };
-};
-export type InterleavedBufferSpec = {
-    count: 1 | 2 | 3 | 4;
-    size: 8 | 16 | 32;
-    encoding: "int" | "normalized-int" | "float" | "uint" | "normalized-uint";
-    value: number[];
-    name: string;
-    stride: number;
-    offset: number;
-}[];
-export type BufferRef = {
-    spec: InterleavedBufferSpec;
-    id: string;
-};
-export type BufferInputRef = {
-    buffer: BufferRef;
-    inputName: string;
-};
-export declare function executeGLMessage<Msg extends GLMessage>(msgwrapper: Msg, context: GLMessageContext): Promise<GLMessageResponse<Msg>>;
-`])}],["GLMessageClient.d.ts",{type:"file",contents:new Blob([`import { GLMessage, GLMessageResponse, GLPrimitive, ShaderRef, ProgramRef, BufferInputRef, UniformTypeValue, TextureRef, MenuRef } from "./GLMessageProtocol";
-import { UIOption, UIReturnType } from "../GLMessageUI";
+`])}],["GLMessageClient.d.ts",{type:"file",contents:new Blob([`import { BufferInputRef, GLMessage, GLMessageResponse, GLPrimitive, MenuRef, ProgramRef, ShaderRef, TextureRef, UniformTypeValue } from "../../gl-message/protocol/GLMessageProtocol";
+import { UIOption, UIReturnType } from "../../components/gl-message-ui/GLMessageUI";
 export type RangeObject = {
     map(min: number, max: number, includeStart?: boolean, includeEnd?: boolean): number;
     divideInterval(min: number, max: number): [number, number];
@@ -528,7 +308,7 @@ export declare function createGLMessageClient(send: <Msg extends GLMessage>(msg:
     }): Promise<{
         inputs: Record<string, GLPrimitive>;
         outputs: Record<string, GLPrimitive>;
-        uniforms: Record<string, import("./GLMessageProtocol").UniformType>;
+        uniforms: Record<string, import("../../gl-message/protocol/GLMessageProtocol").UniformType>;
         id: string;
     }>;
     sendGLMessage<Msg extends GLMessage>(msg: Msg): Promise<GLMessageResponse<Msg>>;
@@ -547,7 +327,7 @@ export declare function createGLMessageClient(send: <Msg extends GLMessage>(msg:
     loadShader(path: string, type: "vertex" | "fragment"): Promise<{
         inputs: Record<string, GLPrimitive>;
         outputs: Record<string, GLPrimitive>;
-        uniforms: Record<string, import("./GLMessageProtocol").UniformType>;
+        uniforms: Record<string, import("../../gl-message/protocol/GLMessageProtocol").UniformType>;
         shaderType: "vertex" | "fragment";
         id: string;
     }>;
@@ -577,10 +357,10 @@ export declare function createGLMessageClient(send: <Msg extends GLMessage>(msg:
     }>;
     loadShaderSource(filename: string): Promise<void>;
 };
-`])}],["EvalboxDefs.d.ts",{type:"file",contents:new Blob([`import * as userInterface from "./EvalboxUIWrapper";
-import { createGLMessageClient } from "./GLMessageClient";
-import * as glclient from "./GLMessageClient";
-import * as glm from "./GLMessageProtocol";
+`])}]])}],["definitions",{type:"dir",contents:new Map([["EvalboxDefs.d.ts",{type:"file",contents:new Blob([`import * as userInterface from "../runtime/EvalboxUIWrapper";
+import { createGLMessageClient } from "../runtime/GLMessageClient";
+import * as glclient from "../runtime/GLMessageClient";
+import * as glm from "../../gl-message/protocol/GLMessageProtocol";
 type GLMessageClient = ReturnType<typeof createGLMessageClient>;
 declare global {
     const g: GLMessageClient;
@@ -635,7 +415,7 @@ declare global {
     } extends A ? true : false;
 }
 export {};
-`])}]])}]])}],["filesystem",{type:"dir",contents:new Map([["FilesystemAdaptor.d.ts",{type:"file",contents:new Blob([`export type FilesystemAdaptor = {
+`])}]])}]])}],["filesystem",{type:"dir",contents:new Map([["fs-protocol",{type:"dir",contents:new Map([["FilesystemAdaptor.d.ts",{type:"file",contents:new Blob([`export type FilesystemAdaptor = {
     readDir: (path: string) => Promise<string[] | undefined>;
     isDir: (path: string) => Promise<boolean | undefined>;
     readFile: (path: string) => Promise<Blob | undefined>;
@@ -656,76 +436,72 @@ export type VirtualFilesystemTree = {
     name: string;
     contents: Blob;
 };
-export declare function createVirtualFilesystem(tree: VirtualFilesystemTree): FilesystemAdaptor;
-export declare function createOverridableVirtualFilesystem(fs: FilesystemAdaptor): FilesystemAdaptor & {
-    overrideFile: (path: string, file: Blob | undefined) => void;
-};
-`])}]])}],["pipeline-assembler",{type:"dir",contents:new Map([["pipeline-format.d.ts",{type:"file",contents:new Blob([`type ID = string;
-type GL = WebGL2RenderingContext;
-export type GLSLFunctionNode = {
-    type: "glsl";
-    id: ID;
-    incoming: {
-        from: ID;
-        slot: string;
-    }[];
-    outgoing: {
-        from: ID;
-        slot: string;
-    };
-    src: string;
-    functionName: string;
-};
-export type TextureFormat = {
-    format: GL["R8"] | GL["R8_SNORM"] | GL["RG8"] | GL["RG8_SNORM"] | GL["RGB8"] | GL["RGB8_SNORM"] | GL["RGB565"] | GL["RGBA4"] | GL["RGB5_A1"] | GL["RGBA8"] | GL["RGBA8_SNORM"] | GL["RGB10_A2"] | GL["RGB10_A2UI"] | GL["SRGB8"] | GL["SRGB8_ALPHA8"] | GL["R16F"] | GL["RG16F"] | GL["RGB16F"] | GL["RGBA16F"] | GL["R32F"] | GL["RG32F"] | GL["RGB32F"] | GL["RGBA32F"] | GL["R11F_G11F_B10F"] | GL["RGB9_E5"] | GL["R8I"] | GL["R8UI"] | GL["R16I"] | GL["R16UI"] | GL["R32I"] | GL["R32UI"] | GL["RG8I"] | GL["RG8UI"] | GL["RG16I"] | GL["RG16UI"] | GL["RG32I"] | GL["RG32UI"] | GL["RGB8I"] | GL["RGB8UI"] | GL["RGB16I"] | GL["RGB16UI"] | GL["RGB32I"] | GL["RGB32UI"] | GL["RGBA8I"] | GL["RGBA8UI"] | GL["RGBA16I"] | GL["RGBA16UI"] | GL["RGBA32I"] | GL["RGBA32UI"];
-    width: number;
-    height: number;
-    type: GL["UNSIGNED_BYTE"] | GL["UNSIGNED_SHORT_5_6_5"] | GL["UNSIGNED_SHORT_4_4_4_4"] | GL["UNSIGNED_SHORT_5_5_5_1"] | GL["UNSIGNED_SHORT"] | GL["UNSIGNED_INT"] | GL["BYTE"] | GL["UNSIGNED_SHORT"] | GL["SHORT"] | GL["INT"] | GL["HALF_FLOAT"] | GL["FLOAT"] | GL["UNSIGNED_INT_2_10_10_10_REV"] | GL["UNSIGNED_INT_10F_11F_11F_REV"] | GL["UNSIGNED_INT_5_9_9_9_REV"] | GL["UNSIGNED_INT_24_8"] | GL["FLOAT_32_UNSIGNED_INT_24_8_REV"];
-};
-export type FramebufferNode = {
-    type: "framebuffer";
-    id: ID;
-    attachments: {
-        attachment: GL["COLOR_ATTACHMENT0"] | GL["COLOR_ATTACHMENT1"] | GL["COLOR_ATTACHMENT2"] | GL["COLOR_ATTACHMENT3"] | GL["COLOR_ATTACHMENT4"] | GL["COLOR_ATTACHMENT5"] | GL["COLOR_ATTACHMENT6"] | GL["COLOR_ATTACHMENT7"] | GL["COLOR_ATTACHMENT8"] | GL["COLOR_ATTACHMENT9"] | GL["COLOR_ATTACHMENT10"] | GL["COLOR_ATTACHMENT11"] | GL["COLOR_ATTACHMENT12"] | GL["COLOR_ATTACHMENT13"] | GL["COLOR_ATTACHMENT14"] | GL["COLOR_ATTACHMENT15"] | GL["DEPTH_ATTACHMENT"] | GL["STENCIL_ATTACHMENT"] | GL["DEPTH_STENCIL_ATTACHMENT"];
-        texture: TextureFormat;
-    }[];
-};
-export type BufferVectorArray = {
-    type: "float";
-    size: 1 | 2 | 3 | 4;
-    datatype: GL["BYTE"] | GL["SHORT"] | GL["UNSIGNED_BYTE"] | GL["UNSIGNED_SHORT"] | GL["FLOAT"] | GL["HALF_FLOAT"] | GL["INT"] | GL["UNSIGNED_INT"] | GL["INT_2_10_10_10_REV"] | GL["UNSIGNED_INT_2_10_10_10_REV"];
-    normalized: boolean;
-    stride: GLsizei;
-    offset: GLintptr;
+`])}]])}],["fs-virtual",{type:"dir",contents:new Map([["FsVirtual.d.ts",{type:"file",contents:new Blob([`import { FilesystemAdaptor } from "../fs-protocol/FilesystemAdaptor";
+export type VirtualFilesystemTree = {
+    type: "dir";
+    name: string;
+    contents: Map<string, VirtualFilesystemTree>;
 } | {
-    type: "int";
-    size: 1 | 2 | 3 | 4;
-    datatype: GL["BYTE"] | GL["UNSIGNED_BYTE"] | GL["SHORT"] | GL["UNSIGNED_SHORT"] | GL["INT"] | GL["UNSIGNED_INT"];
-    stride: GLsizei;
-    offset: GLintptr;
+    type: "file";
+    name: string;
+    contents: Blob;
 };
-export type BufferFormat = BufferVectorArray[];
-export type GeometryNode = {
-    type: "geometry";
-    id: ID;
-    buffers: BufferFormat[];
+export declare function createVirtualFilesystem(tree: VirtualFilesystemTree): FilesystemAdaptor;
+`])}]])}]])}],["utilities",{type:"dir",contents:new Map([["lens",{type:"dir",contents:new Map([["lens.d.ts",{type:"file",contents:new Blob([`type NestedKeyOf<T, K> = K extends [infer K1, ...infer Kr] ? K1 extends keyof T ? NestedKeyOf<T[K1], Kr> : never : K extends [] ? T : never;
+export declare function setDeep<T, K extends [...string[]]>(t: T, path: K, v: (oldValue: NestedKeyOf<T, K>) => NestedKeyOf<T, K>): T;
+type StringKeys<T> = {
+    [Key in keyof T]: T[Key] extends string ? T[Key] : never;
 };
-export type RasterizerNode = {
-    type: "rasterizer";
-    id: ID;
-    inputs: {
-        id: ID;
-        index: number;
-    }[];
-    indices?: ID;
+type LensValue<T, Root> = (cb: (t: T) => T) => Root;
+type LensPartial<T, Root> = (cb: (t: LensObject<T>) => Partial<T>) => Root;
+type LensEach<T, Root, I> = (cb: (item: LensObject<I>, index: number, array: I[]) => I) => Root;
+type LensMatch<T, Root> = <K extends keyof StringKeys<T>>(prop: K, matchers: ({
+    [Key in (T[K] & string) | "$d"]?: Key extends "$d" ? (t: LensObject<T>) => T : (t: LensObject<T & {
+        [Key2 in K]: Key;
+    }>) => T;
+} & {
+    $d: (t: LensObject<T>) => T;
+}) | {
+    [Key in T[K] & string]: (t: LensObject<T & {
+        [Key2 in K]: Key;
+    }>) => T;
+}) => Root;
+type LensGet<T, Root> = <G>(cb: (t: T) => G) => G;
+type WithLensMethods<T, Root> = T & {
+    $: LensValue<T, Root>;
+    $p: LensPartial<T, Root>;
+    $f: LensObject<T, T>;
+    $m: LensMatch<T, Root>;
+    $g: LensGet<T, Root>;
+} & (T extends (infer I)[] ? {
+    $e: LensEach<T, Root, I>;
+} : {});
+type LensObject<T, Root = T> = {
+    [K in keyof WithLensMethods<T, Root>]-?: K extends "$" ? LensValue<T, Root> : K extends "$p" ? LensPartial<T, Root> : K extends "$f" ? LensObject<T, T> : K extends "$e" ? T extends (infer I)[] ? LensEach<T, Root, I> : never : K extends "$m" ? LensMatch<T, Root> : K extends "$g" ? LensGet<T, Root> : undefined extends WithLensMethods<T, Root>[K] ? LensObject<WithLensMethods<T, Root>[K], Root> : LensObject<WithLensMethods<T, Root>[K], Root>;
 };
-export type RenderState = {
-    buffers: Map<number, WebGLBuffer>;
-    textures: Map<number, WebGLTexture>;
-    framebuffers: Map<number, WebGLFramebuffer | null>;
-};
+export declare function lens<T, R = T>(t: T, path?: string[], root?: any): LensObject<T, R>;
+export declare function id<T>(t: T): T;
+export declare function delens<T>(t: LensObject<T>): T;
 export {};
-`])}]])}],["glsl-analyzer",{type:"dir",contents:new Map([["glsl-keywords.d.ts",{type:"file",contents:new Blob([`export declare const GLSL_KEYWORDS: string[];
+`])}]])}],["result",{type:"dir",contents:new Map([["result.d.ts",{type:"file",contents:new Blob([`export type ResultSuccess<T> = {
+    readonly success: true;
+    readonly data: T;
+};
+export type ResultError<E> = {
+    readonly success: false;
+    readonly error: E;
+};
+export declare class Result<T, E> {
+    readonly data: ResultSuccess<T> | ResultError<E>;
+    constructor(data: ResultSuccess<T> | ResultError<E>);
+    unsafeExpectSuccess(): T;
+    mapS<T2>(f: (t: T) => T2): Result<T2, E>;
+    mapE<E2>(f: (e: E) => E2): Result<T, E2>;
+}
+export declare function ok<T, E>(data: T): Result<T, E>;
+export declare function err<T, E>(error: E): Result<T, E>;
+export declare function splitSuccessesAndErrors<T, E>(results: Result<T, E>[]): [T[], E[]];
+`])}]])}]])}],["languages",{type:"dir",contents:new Map([["glsl",{type:"dir",contents:new Map([["parser",{type:"dir",contents:new Map([["glsl-keywords.d.ts",{type:"file",contents:new Blob([`export declare const GLSL_KEYWORDS: string[];
 export declare const GLSL_SYMBOLS: string[];
 `])}],["lexer.d.ts",{type:"file",contents:new Blob([`export declare enum TokenKind {
     Symbol = 0,
@@ -1166,9 +942,9 @@ export declare const translation_unit: import("typescript-parsec").Rule<TokenKin
 export declare const external_declaration: import("typescript-parsec").Rule<TokenKind, ASTNode<ExternalDeclaration>>;
 export {};
 `])}],["parser-combined.d.ts",{type:"file",contents:new Blob([`import { Parser, Token } from "typescript-parsec";
-import { Result } from "../utils/result";
 import { TokenKind } from "./lexer";
 import { TranslationUnit } from "./parser";
+import { Result } from "../../../utilities/result/result";
 export type ParserResult = {
     translationUnit: TranslationUnit;
 };
@@ -1180,7 +956,47 @@ export declare function tryParseGLSLRaw<T>(tokens: Token<TokenKind> | undefined,
 export declare function parseWith<T>(str: string, parser: Parser<TokenKind, T>): T;
 export declare function parseGLSLFragmentWithoutPreprocessing<T>(source: string, parser: Parser<TokenKind, T>): Result<T, ParserError>;
 export declare function parseGLSLWithoutPreprocessing(source: string): Result<ParserResult, ParserError>;
-`])}],["formatter",{type:"dir",contents:new Map([["fmt-shared.d.ts",{type:"file",contents:new Blob([`export declare const unaryPrecedences: {
+`])}],["glsl-ast-utils.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Declaration, Expr, ExternalDeclaration, ExternalDeclarationFunction, ParameterDeclaration, Stmt, StructSpecifier, TranslationUnit } from "./parser";
+export declare function getFunctions(tu: TranslationUnit): Commented<ExternalDeclarationFunction>[];
+export declare function getParameters(fn: Commented<ExternalDeclarationFunction>): Commented<Commented<ParameterDeclaration>[]>;
+export declare function getNamedInputParameters(fn: Commented<ExternalDeclarationFunction>): {
+    name: string;
+    param: Commented<ParameterDeclaration>;
+}[];
+export declare function getNamedOutputParameters(fn: Commented<ExternalDeclarationFunction>): {
+    name: string;
+    param: Commented<ParameterDeclaration>;
+}[];
+export declare function mapOverJson(json: any, map: (json: any) => any): any;
+export declare function mapAST<T>(t: T, map: {
+    expr?(expr: ASTNode<Expr>, mapInner: (expr: ASTNode<Expr>) => ASTNode<Expr>): ASTNode<Expr>;
+    stmt?(stmt: ASTNode<Stmt>, mapInner: (stmt: ASTNode<Stmt>) => ASTNode<Stmt>): ASTNode<Stmt>;
+    decl?(decl: ASTNode<Declaration>, mapInner: (decl: ASTNode<Declaration>) => ASTNode<Declaration>): Commented<Declaration>;
+    extDecl?(extDecl: ASTNode<ExternalDeclaration>, mapInner: (extDecl: ASTNode<ExternalDeclaration>) => ASTNode<ExternalDeclaration>): ASTNode<ExternalDeclaration>;
+    struct?(struct: StructSpecifier, mapInner: (struct: StructSpecifier) => StructSpecifier): StructSpecifier;
+    error?(err: ASTNode<{
+        _isError: true;
+        why: string;
+    }>, mapInner: (err: ASTNode<{
+        _isError: true;
+        why: string;
+    }>) => ASTNode<{
+        _isError: true;
+        why: string;
+    }>): ASTNode<{
+        _isError: true;
+        why: string;
+    }>;
+}): T;
+export declare function renameSymbols<T>(t: T, rename: (s: string) => string): T;
+export declare function mapGlobalSymbols(t: TranslationUnit, rename: (str: string) => string): TranslationUnit;
+export declare function mapAllSymbolsDefinedByStmt(s: ASTNode<Stmt>, rename: (str: string) => string): ASTNode<Stmt>;
+export declare function mapAllSymbolsDefinedInsideStmt(s: ASTNode<Stmt>, rename: (str: string) => string): ASTNode<Stmt>;
+export declare function getAllStatementsInsideStmt(s: ASTNode<Stmt>): ASTNode<Stmt>[];
+export declare function mapAllSymbolsDefinedInsideExtDecl(ed: ASTNode<ExternalDeclaration>, rename: (s: string) => string): ASTNode<ExternalDeclaration>;
+export declare function mapAllSymbolsDefinedByExtDecl(ed: ASTNode<ExternalDeclaration>, rename: (s: string) => string): ASTNode<ExternalDeclaration>;
+export declare function mapAllStatementsInsideExtDecl(ed: ASTNode<ExternalDeclaration>, map: (s: ASTNode<Stmt>) => ASTNode<Stmt>): ASTNode<ExternalDeclaration>;
+`])}]])}],["fmt",{type:"dir",contents:new Map([["fmt-shared.d.ts",{type:"file",contents:new Blob([`export declare const unaryPrecedences: {
     defined: number;
     "++": number;
     "--": number;
@@ -1215,48 +1031,7 @@ export declare const binaryPrecedences: {
 };
 export declare const minPrecedence = 10;
 export declare const maxPrecedence = 150;
-`])}],["fmt-packed.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Condition, Declaration, Expr, ExternalDeclaration, ForRestStatement, FullySpecifiedType, FunctionHeader, FunctionIdentifier, InitDeclaratorList, InterpolationQualifier, InvariantQualifier, LayoutQualifier, LayoutQualifierId, ParameterDeclaration, ParameterDeclarator, ParameterQualifier, ParameterTypeQualifier, Precision, SelectionRestStmt, SingleDeclaration, SingleDeclarationStart, Stmt, StorageQualifier, StructDeclaration, StructDeclarationList, StructDeclarator, StructDeclaratorList, StructSpecifier, TranslationUnit, TypeNoPrec, TypeQualifier, TypeSpecifier, TypeSpecifierNonarray } from "../parser";
-export declare namespace FormatGLSLPacked {
-    type ExprCtx = {
-        precedence: number;
-    };
-    function exprmax(e: ASTNode<Expr>): string;
-    function expr(e: ASTNode<Expr>, c: ExprCtx): string;
-    function functionCallIdentifier(i: FunctionIdentifier): string;
-    function translationUnit(tr: TranslationUnit): string;
-    function externalDeclaration(ed: ASTNode<ExternalDeclaration>): string;
-    function functionPrototype(fp: Commented<FunctionHeader>): string;
-    function fullySpecifiedType(fst: Commented<FullySpecifiedType>): string;
-    function typeQualifier(tq: Commented<TypeQualifier>): string;
-    function invariantQualifier(iq: Commented<InvariantQualifier>): string;
-    function layoutQualifier(lq: Commented<LayoutQualifier>): string;
-    function layoutQualifierId(lqid: Commented<LayoutQualifierId>): string;
-    function storageQualifier(sq: Commented<StorageQualifier>): string;
-    function interpolationQualifier(iq: Commented<InterpolationQualifier>): string;
-    function typeSpecifier(ts: Commented<TypeSpecifier>): string;
-    function typeSpecifierNoCommented(ts: TypeSpecifier): string;
-    function precision(p: Commented<Precision>): string;
-    function typeNoPrec(tnp: Commented<TypeNoPrec>): string;
-    function typeSpecifierNonarray(tsn: Commented<TypeSpecifierNonarray>): string;
-    function structSpecifier(ss: Commented<StructSpecifier>): string;
-    function parameterDeclaration(pd: Commented<ParameterDeclaration>): string;
-    function parameterDeclarator(pd: Commented<ParameterDeclarator>): string;
-    function parameterTypeQualifier(ptq: Commented<ParameterTypeQualifier>): string;
-    function parameterQualifier(pq: Commented<ParameterQualifier>): string;
-    function initDeclaratorList(idl: Commented<InitDeclaratorList>): string;
-    function singleDeclarationStart(sds: Commented<SingleDeclarationStart>): string;
-    function singleDeclaration(sd: Commented<SingleDeclaration>): string;
-    function declaration(d: Commented<Declaration>): string;
-    function structDeclarationList(sdl: Commented<StructDeclarationList>): string;
-    function structDeclaration(sd: Commented<StructDeclaration>): string;
-    function structDeclaratorList(sdl: Commented<StructDeclaratorList>): string;
-    function structDeclarator(sd: Commented<StructDeclarator>): string;
-    function statement(s: ASTNode<Stmt>): string;
-    function forRestStatement(frs: Commented<ForRestStatement>): string;
-    function selectionRestStmt(srs: Commented<SelectionRestStmt>): string;
-    function condition(c: Commented<Condition>): string;
-}
-`])}],["fmt-fancy.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Condition, Declaration, Expr, ExternalDeclaration, ForRestStatement, FullySpecifiedType, FunctionHeader, FunctionIdentifier, InitDeclaratorList, InterpolationQualifier, InvariantQualifier, LayoutQualifier, LayoutQualifierId, ParameterDeclaration, ParameterDeclarator, ParameterQualifier, ParameterTypeQualifier, Precision, SelectionRestStmt, SingleDeclaration, SingleDeclarationStart, Stmt, StorageQualifier, StructDeclaration, StructDeclarationList, StructDeclarator, StructDeclaratorList, StructSpecifier, TranslationUnit, TypeNoPrec, TypeQualifier, TypeSpecifier, TypeSpecifierNonarray } from "../parser";
+`])}],["fmt-fancy.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Condition, Declaration, Expr, ExternalDeclaration, ForRestStatement, FullySpecifiedType, FunctionHeader, FunctionIdentifier, InitDeclaratorList, InterpolationQualifier, InvariantQualifier, LayoutQualifier, LayoutQualifierId, ParameterDeclaration, ParameterDeclarator, ParameterQualifier, ParameterTypeQualifier, Precision, SelectionRestStmt, SingleDeclaration, SingleDeclarationStart, Stmt, StorageQualifier, StructDeclaration, StructDeclarationList, StructDeclarator, StructDeclaratorList, StructSpecifier, TranslationUnit, TypeNoPrec, TypeQualifier, TypeSpecifier, TypeSpecifierNonarray } from "../parser/parser";
 export type ExprCtx = {
     precedence: number;
 };
@@ -1303,47 +1078,7 @@ export declare const makeFancyFormatter: (lineLengthLimit?: number, indentAmount
     translationUnit(tr: TranslationUnit): string;
     externalDeclaration(ed: ASTNode<ExternalDeclaration>): string;
 };
-`])}]])}],["glsl-ast-utils.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Declaration, Expr, ExternalDeclaration, ExternalDeclarationFunction, ParameterDeclaration, Stmt, StructSpecifier, TranslationUnit } from "./parser";
-export declare function getFunctions(tu: TranslationUnit): Commented<ExternalDeclarationFunction>[];
-export declare function getParameters(fn: Commented<ExternalDeclarationFunction>): Commented<Commented<ParameterDeclaration>[]>;
-export declare function getNamedInputParameters(fn: Commented<ExternalDeclarationFunction>): {
-    name: string;
-    param: Commented<ParameterDeclaration>;
-}[];
-export declare function getNamedOutputParameters(fn: Commented<ExternalDeclarationFunction>): {
-    name: string;
-    param: Commented<ParameterDeclaration>;
-}[];
-export declare function mapOverJson(json: any, map: (json: any) => any): any;
-export declare function mapAST<T>(t: T, map: {
-    expr?(expr: ASTNode<Expr>, mapInner: (expr: ASTNode<Expr>) => ASTNode<Expr>): ASTNode<Expr>;
-    stmt?(stmt: ASTNode<Stmt>, mapInner: (stmt: ASTNode<Stmt>) => ASTNode<Stmt>): ASTNode<Stmt>;
-    decl?(decl: ASTNode<Declaration>, mapInner: (decl: ASTNode<Declaration>) => ASTNode<Declaration>): Commented<Declaration>;
-    extDecl?(extDecl: ASTNode<ExternalDeclaration>, mapInner: (extDecl: ASTNode<ExternalDeclaration>) => ASTNode<ExternalDeclaration>): ASTNode<ExternalDeclaration>;
-    struct?(struct: StructSpecifier, mapInner: (struct: StructSpecifier) => StructSpecifier): StructSpecifier;
-    error?(err: ASTNode<{
-        _isError: true;
-        why: string;
-    }>, mapInner: (err: ASTNode<{
-        _isError: true;
-        why: string;
-    }>) => ASTNode<{
-        _isError: true;
-        why: string;
-    }>): ASTNode<{
-        _isError: true;
-        why: string;
-    }>;
-}): T;
-export declare function renameSymbols<T>(t: T, rename: (s: string) => string): T;
-export declare function mapGlobalSymbols(t: TranslationUnit, rename: (str: string) => string): TranslationUnit;
-export declare function mapAllSymbolsDefinedByStmt(s: ASTNode<Stmt>, rename: (str: string) => string): ASTNode<Stmt>;
-export declare function mapAllSymbolsDefinedInsideStmt(s: ASTNode<Stmt>, rename: (str: string) => string): ASTNode<Stmt>;
-export declare function getAllStatementsInsideStmt(s: ASTNode<Stmt>): ASTNode<Stmt>[];
-export declare function mapAllSymbolsDefinedInsideExtDecl(ed: ASTNode<ExternalDeclaration>, rename: (s: string) => string): ASTNode<ExternalDeclaration>;
-export declare function mapAllSymbolsDefinedByExtDecl(ed: ASTNode<ExternalDeclaration>, rename: (s: string) => string): ASTNode<ExternalDeclaration>;
-export declare function mapAllStatementsInsideExtDecl(ed: ASTNode<ExternalDeclaration>, map: (s: ASTNode<Stmt>) => ASTNode<Stmt>): ASTNode<ExternalDeclaration>;
-`])}],["langserver",{type:"dir",contents:new Map([["validate-swizzle.d.ts",{type:"file",contents:new Blob([`export declare function swizzleCharToIndex(char: string): number;
+`])}]])}],["typechecker",{type:"dir",contents:new Map([["validate-swizzle.d.ts",{type:"file",contents:new Blob([`export declare function swizzleCharToIndex(char: string): number;
 export declare function getSwizzleRegex(arity: 2 | 3 | 4): RegExp;
 export declare function permute<T>(arr: T[]): T[][];
 export declare function powerSet<T>(arr: T[]): T[][];
@@ -1353,57 +1088,8 @@ export declare const lValueSwizzles: {
     3: Set<string>;
     4: Set<string>;
 };
-`])}],["evaluator.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Expr, FullySpecifiedType, Stmt, TranslationUnit } from "../parser";
-import { Scope } from "./glsl-language-server";
-export type GLSLValue = {
-    type: "vector";
-    vectorType: "int" | "float" | "uint" | "bool";
-    size: 1 | 2 | 3 | 4;
-    value: number[];
-} | {
-    type: "array";
-    value: GLSLValue[];
-} | {
-    type: "struct";
-    structType: string;
-    fields: Map<string, GLSLValue>;
-} | {
-    type: "error";
-} | {
-    type: "uninitialized";
-    intendedType: FullySpecifiedType;
-};
-declare function vec(vectorType: "int" | "float" | "uint" | "bool", size: 1 | 2 | 3 | 4, isConst: boolean, value: number[]): GLSLValue;
-export declare const constructVectorValue: typeof vec;
-export type StackFrame = {
-    correspondingScopes: Scope[];
-    values: Map<string, {
-        value: GLSLValue;
-        type: FullySpecifiedType;
-    } | undefined>;
-    returnValue?: GLSLValue;
-    isFunctionRoot?: boolean;
-};
-export declare function isConst(expr: ASTNode<Expr>, scopeChain: Scope[]): boolean;
-export declare function isLValue(expr: ASTNode<Expr>, scopeChain: Scope[]): boolean;
-export declare function assignToLValue(lvalue: ASTNode<Expr>, stack: StackFrame[], assign: (oldvalue: GLSLValue, newvalue: GLSLValue) => GLSLValue, newvalue: GLSLValue): GLSLValue;
-export declare function evaluateExpression(expr: ASTNode<Expr>, stack: StackFrame[]): GLSLValue;
-export declare function evalexpr(expr: ASTNode<Expr>, stack: StackFrame[]): GLSLValue;
-type EvaluateStatementResult = {
-    returnValue?: GLSLValue;
-    shouldReturn?: boolean;
-    shouldBreak?: boolean;
-    shouldContinue?: boolean;
-    caseResult?: GLSLValue;
-    execNext?: ASTNode<Stmt>[];
-    defaultCase?: boolean;
-    discard?: boolean;
-};
-export declare function evaluateStatement(stmt: ASTNode<Stmt>, stack: StackFrame[]): EvaluateStatementResult;
-export declare function evaluateTranslationUnit(tu: TranslationUnit, scopes: Scope[], entryPoint: string): StackFrame;
-export {};
-`])}],["glsltype.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Expr, FullySpecifiedType } from "../parser";
-import { Scope } from "./glsl-language-server";
+`])}],["glsltype.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Expr, FullySpecifiedType } from "../parser/parser";
+import { Scope } from "../langsupport/glsl-language-server";
 import { TypeError } from "./typecheck";
 export type PType = "int" | "uint" | "bool" | "float";
 export type Arity = 1 | 2 | 3 | 4;
@@ -1482,8 +1168,8 @@ export declare function convertType(type: FullySpecifiedType, scopes: Scope[], u
     type: "num";
     size: number;
 }): TypeResult;
-`])}],["typecheck.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Expr, FullySpecifiedType, ParameterDeclaration, TypeNoPrec } from "../parser";
-import { Scope } from "./glsl-language-server";
+`])}],["typecheck.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Commented, Expr, FullySpecifiedType, ParameterDeclaration, TypeNoPrec } from "../parser/parser";
+import { Scope } from "../langsupport/glsl-language-server";
 import { TypeResult } from "./glsltype";
 export declare function isFloatOrFloatVector(t: FullySpecifiedType | undefined): boolean;
 export declare function isSignedIntOrIntVector(t: FullySpecifiedType | undefined): boolean;
@@ -1510,14 +1196,70 @@ export declare function getFunctionParamTypeNode(param: ASTNode<ParameterDeclara
 export declare function unarrayType(type: FullySpecifiedType): FullySpecifiedType;
 export declare function arrayifyType(type: FullySpecifiedType, size?: number): FullySpecifiedType;
 export declare function getExprType(expr: ASTNode<Expr>, scopeChain: Scope[]): TypeResult;
-`])}],["builtins.d.ts",{type:"file",contents:new Blob([`import { Scope } from "./glsl-language-server";
+`])}],["get-inputs-outputs.d.ts",{type:"file",contents:new Blob([`import { GLPrimitive, UniformType } from "../../../gl-message/protocol/GLMessageProtocol";
+import { TranslationUnit } from "../parser/parser";
+export declare function getInputsOutputsAndUniforms(tu: TranslationUnit): {
+    uniforms: Record<string, UniformType>;
+    inputs: Record<string, GLPrimitive>;
+    outputs: Record<string, GLPrimitive>;
+};
+`])}]])}],["evaluator",{type:"dir",contents:new Map([["evaluator.d.ts",{type:"file",contents:new Blob([`import { ASTNode, Expr, FullySpecifiedType, Stmt, TranslationUnit } from "../parser/parser";
+import { Scope } from "../langsupport/glsl-language-server";
+export type GLSLValue = {
+    type: "vector";
+    vectorType: "int" | "float" | "uint" | "bool";
+    size: 1 | 2 | 3 | 4;
+    value: number[];
+} | {
+    type: "array";
+    value: GLSLValue[];
+} | {
+    type: "struct";
+    structType: string;
+    fields: Map<string, GLSLValue>;
+} | {
+    type: "error";
+} | {
+    type: "uninitialized";
+    intendedType: FullySpecifiedType;
+};
+declare function vec(vectorType: "int" | "float" | "uint" | "bool", size: 1 | 2 | 3 | 4, isConst: boolean, value: number[]): GLSLValue;
+export declare const constructVectorValue: typeof vec;
+export type StackFrame = {
+    correspondingScopes: Scope[];
+    values: Map<string, {
+        value: GLSLValue;
+        type: FullySpecifiedType;
+    } | undefined>;
+    returnValue?: GLSLValue;
+    isFunctionRoot?: boolean;
+};
+export declare function isConst(expr: ASTNode<Expr>, scopeChain: Scope[]): boolean;
+export declare function isLValue(expr: ASTNode<Expr>, scopeChain: Scope[]): boolean;
+export declare function assignToLValue(lvalue: ASTNode<Expr>, stack: StackFrame[], assign: (oldvalue: GLSLValue, newvalue: GLSLValue) => GLSLValue, newvalue: GLSLValue): GLSLValue;
+export declare function evaluateExpression(expr: ASTNode<Expr>, stack: StackFrame[]): GLSLValue;
+export declare function evalexpr(expr: ASTNode<Expr>, stack: StackFrame[]): GLSLValue;
+type EvaluateStatementResult = {
+    returnValue?: GLSLValue;
+    shouldReturn?: boolean;
+    shouldBreak?: boolean;
+    shouldContinue?: boolean;
+    caseResult?: GLSLValue;
+    execNext?: ASTNode<Stmt>[];
+    defaultCase?: boolean;
+    discard?: boolean;
+};
+export declare function evaluateStatement(stmt: ASTNode<Stmt>, stack: StackFrame[]): EvaluateStatementResult;
+export declare function evaluateTranslationUnit(tu: TranslationUnit, scopes: Scope[], entryPoint: string): StackFrame;
+export {};
+`])}]])}],["stdlib",{type:"dir",contents:new Map([["builtins.d.ts",{type:"file",contents:new Blob([`import { Scope } from "../langsupport/glsl-language-server";
 export declare const builtinSource: string;
 export declare function getGLSLBuiltinsForReal(start: number, end: number, innerScopes: Scope[], fallthrough?: boolean): Promise<Scope>;
 export declare function getGLSLBuiltins(start: number, end: number, innerScopes: Scope[], fallthrough?: boolean): Promise<Scope>;
-`])}],["glsl-language-server.d.ts",{type:"file",contents:new Blob([`import { FilesystemAdaptor } from "../../filesystem/FilesystemAdaptor";
-import { ASTNode, Commented, Expr, ExternalDeclarationFunction, FullySpecifiedType, FunctionCallExpr, FunctionHeader, TranslationUnit } from "../parser";
-import { GLSLValue, StackFrame } from "./evaluator";
-import { GLSLType, TypeResult } from "./glsltype";
+`])}]])}],["langsupport",{type:"dir",contents:new Map([["glsl-language-server.d.ts",{type:"file",contents:new Blob([`import { GLSLType, TypeResult } from "../typechecker/glsltype";
+import { ASTNode, Commented, Expr, ExternalDeclarationFunction, FullySpecifiedType, FunctionCallExpr, FunctionHeader, TranslationUnit } from "../parser/parser";
+import { GLSLValue, StackFrame } from "../evaluator/evaluator";
+import { FilesystemAdaptor } from "../../../filesystem/fs-protocol/FilesystemAdaptor";
 export type GLSLAutocompleteOption = {
     str: string;
     type: "variable" | "function" | "type" | "keyword";
@@ -1582,66 +1324,292 @@ export declare function makeGLSLLanguageServer(context: {
     getSignatureHelp(file: string, pos: number): Promise<GLSLSignatureHelp | undefined>;
     getAutocompleteOptions(file: string, pos: number): Promise<GLSLAutocompleteOption[]>;
 };
-`])}]])}],["get-inputs-outputs.d.ts",{type:"file",contents:new Blob([`import { GLPrimitive, UniformType } from "../components/iframe-runtime/GLMessageProtocol";
-import { TranslationUnit } from "./parser";
-export declare function getInputsOutputsAndUniforms(tu: TranslationUnit): {
-    uniforms: Record<string, UniformType>;
+`])}]])}]])}]])}],["gl-message",{type:"dir",contents:new Map([["protocol",{type:"dir",contents:new Map([["GLMessageProtocol.d.ts",{type:"file",contents:new Blob([`import { UIOption, UIReturnType } from "../../components/gl-message-ui/GLMessageUI";
+export type GLPrimitive = {
+    count: 1 | 2 | 3 | 4;
+    type: "float" | "int" | "uint";
+};
+export type UniformType = GLPrimitive | {
+    type: "sampler";
+    dimensionality: "2D" | "3D" | "2DArray" | "Cube";
+    samplerType: "float" | "int" | "uint";
+} | {
+    type: "sampler";
+    samplerType: "shadow";
+    dimensionality: "2D" | "2DArray" | "Cube";
+};
+export type GLPrimitiveToNumber<G extends GLPrimitive> = G["count"] extends 1 ? number : G["count"] extends 2 ? [number, number] : G["count"] extends 3 ? [number, number, number] : [number, number, number, number];
+export type UniformTypeValue<G extends UniformType> = G extends GLPrimitive ? GLPrimitiveToNumber<G> : TextureRef;
+export type UniformsToValues<G extends Record<string, UniformType>> = {
+    [K in keyof G]: UniformTypeValue<G[K]>;
+};
+export type ShaderSource = {
     inputs: Record<string, GLPrimitive>;
     outputs: Record<string, GLPrimitive>;
+    uniforms: Record<string, UniformType>;
+    shaderType: "vertex" | "fragment";
+    text: string;
 };
-`])}]])}],["utils",{type:"dir",contents:new Map([["result.d.ts",{type:"file",contents:new Blob([`export type ResultSuccess<T> = {
-    readonly success: true;
-    readonly data: T;
+export type ShaderRef<Type extends "vertex" | "fragment"> = {
+    inputs: Record<string, GLPrimitive>;
+    outputs: Record<string, GLPrimitive>;
+    uniforms: Record<string, UniformType>;
+    shaderType: Type;
+    id: string;
 };
-export type ResultError<E> = {
-    readonly success: false;
-    readonly error: E;
+export type ProgramRef = {
+    inputs: Record<string, GLPrimitive>;
+    outputs: Record<string, GLPrimitive>;
+    uniforms: Record<string, UniformType>;
+    id: string;
 };
-export declare class Result<T, E> {
-    readonly data: ResultSuccess<T> | ResultError<E>;
-    constructor(data: ResultSuccess<T> | ResultError<E>);
-    unsafeExpectSuccess(): T;
-    mapS<T2>(f: (t: T) => T2): Result<T2, E>;
-    mapE<E2>(f: (e: E) => E2): Result<T, E2>;
-}
-export declare function ok<T, E>(data: T): Result<T, E>;
-export declare function err<T, E>(error: E): Result<T, E>;
-export declare function splitSuccessesAndErrors<T, E>(results: Result<T, E>[]): [T[], E[]];
-`])}],["lens.d.ts",{type:"file",contents:new Blob([`type NestedKeyOf<T, K> = K extends [infer K1, ...infer Kr] ? K1 extends keyof T ? NestedKeyOf<T[K1], Kr> : never : K extends [] ? T : never;
-export declare function setDeep<T, K extends [...string[]]>(t: T, path: K, v: (oldValue: NestedKeyOf<T, K>) => NestedKeyOf<T, K>): T;
-type StringKeys<T> = {
-    [Key in keyof T]: T[Key] extends string ? T[Key] : never;
+export type TextureDimension = {
+    type: "dynamic";
+    pixels: number;
 };
-type LensValue<T, Root> = (cb: (t: T) => T) => Root;
-type LensPartial<T, Root> = (cb: (t: LensObject<T>) => Partial<T>) => Root;
-type LensEach<T, Root, I> = (cb: (item: LensObject<I>, index: number, array: I[]) => I) => Root;
-type LensMatch<T, Root> = <K extends keyof StringKeys<T>>(prop: K, matchers: ({
-    [Key in (T[K] & string) | "$d"]?: Key extends "$d" ? (t: LensObject<T>) => T : (t: LensObject<T & {
-        [Key2 in K]: Key;
-    }>) => T;
-} & {
-    $d: (t: LensObject<T>) => T;
-}) | {
-    [Key in T[K] & string]: (t: LensObject<T & {
-        [Key2 in K]: Key;
-    }>) => T;
-}) => Root;
-type LensGet<T, Root> = <G>(cb: (t: T) => G) => G;
-type WithLensMethods<T, Root> = T & {
-    $: LensValue<T, Root>;
-    $p: LensPartial<T, Root>;
-    $f: LensObject<T, T>;
-    $m: LensMatch<T, Root>;
-    $g: LensGet<T, Root>;
-} & (T extends (infer I)[] ? {
-    $e: LensEach<T, Root, I>;
-} : {});
-type LensObject<T, Root = T> = {
-    [K in keyof WithLensMethods<T, Root>]-?: K extends "$" ? LensValue<T, Root> : K extends "$p" ? LensPartial<T, Root> : K extends "$f" ? LensObject<T, T> : K extends "$e" ? T extends (infer I)[] ? LensEach<T, Root, I> : never : K extends "$m" ? LensMatch<T, Root> : K extends "$g" ? LensGet<T, Root> : undefined extends WithLensMethods<T, Root>[K] ? LensObject<WithLensMethods<T, Root>[K], Root> : LensObject<WithLensMethods<T, Root>[K], Root>;
+export type TextureRef = {
+    id: string;
+    width: TextureDimension;
+    height: TextureDimension;
+    dimensionality: "2D" | "3D" | "2DArray" | "Cube";
+    format: "float" | "int" | "uint";
 };
-export declare function lens<T, R = T>(t: T, path?: string[], root?: any): LensObject<T, R>;
-export declare function id<T>(t: T): T;
-export declare function delens<T>(t: LensObject<T>): T;
+export type GLMessageContents = {
+    type: "clear";
+    color?: [number, number, number, number];
+    depth?: number;
+    stencil?: number;
+} | {
+    type: "create-buffer";
+    id: string;
+    source: {
+        type: "array";
+        spec: InterleavedBufferSpec;
+    };
+} | {
+    type: "create-shader";
+    source: ShaderSource;
+    id: string;
+} | {
+    type: "create-program";
+    vertex: ShaderRef<"vertex">;
+    fragment: ShaderRef<"fragment">;
+    id: string;
+} | {
+    type: "draw";
+    program: ProgramRef;
+    inputs: Record<string, BufferInputRef>;
+    outputs: Record<string, TextureRef | null>;
+    uniforms: Record<string, number | number[] | TextureRef>;
+    count: number;
+} | {
+    type: "load-file";
+    path: string;
+} | {
+    type: "create-texture";
+    pixels?: ArrayBuffer;
+    width: number;
+    height: number;
+    depth?: number;
+    internalformat: GLenum;
+    minFilter: GLenum;
+    magFilter: GLenum;
+    wrapS: GLenum;
+    wrapT: GLenum;
+    id: string;
+} | {
+    type: "create-menu";
+    id: string;
+    menu: UIOption;
+} | {
+    type: "poll-menu";
+    id: string;
+    menu: MenuRef;
+} | {
+    type: "resize";
+    width: number;
+    height: number;
+} | {
+    type: "get-window-size";
+} | {
+    type: "get-pan-and-zoom-bounds";
+} | {
+    type: "reset-encoder";
+} | {
+    type: "add-frame";
+} | {
+    type: "render-video";
+    filename: string;
+    audioLink?: string;
+} | {
+    type: "read-file";
+    filename: string;
+} | {
+    type: "get-shader-function-signatures";
+    filename: string;
+};
+export type GLMessageContentsType<T extends GLMessageContents["type"]> = GLMessageContents & {
+    type: T;
+};
+export type GLMessageType<T extends GLMessageContents["type"]> = {
+    id: string;
+    contents: GLMessageContentsType<T>;
+};
+export type GLMessage = {
+    contents: GLMessageContents;
+    id: string;
+};
+export type MenuRef = {
+    id: string;
+    menu: UIOption;
+};
+export type GLMessageResponseContents<Msg extends GLMessage> = Msg extends GLMessageType<"create-buffer"> ? {
+    spec: Msg["contents"]["source"]["spec"];
+    id: string;
+} : Msg extends GLMessageType<"create-shader"> ? {
+    inputs: Msg["contents"]["source"]["inputs"];
+    outputs: Msg["contents"]["source"]["outputs"];
+    uniforms: Msg["contents"]["source"]["uniforms"];
+    shaderType: Msg["contents"]["source"]["shaderType"];
+    id: Msg["contents"]["id"];
+} : Msg extends GLMessageType<"create-program"> ? {
+    inputs: Msg["contents"]["vertex"]["inputs"];
+    outputs: Msg["contents"]["fragment"]["outputs"];
+    uniforms: Msg["contents"]["vertex"]["uniforms"] & Msg["contents"]["fragment"]["uniforms"];
+    id: Msg["contents"]["id"];
+} : Msg extends GLMessageType<"load-file"> ? {
+    file: Blob | undefined;
+} : Msg extends GLMessageType<"create-texture"> ? TextureRef : Msg extends GLMessageType<"create-menu"> ? MenuRef : Msg extends GLMessageType<"poll-menu"> ? UIReturnType<Msg["contents"]["menu"]["menu"]> : Msg extends GLMessageType<"get-window-size"> ? {
+    width: number;
+    height: number;
+} : Msg extends GLMessageType<"get-pan-and-zoom-bounds"> ? {
+    bottomLeft: [number, number];
+    topRight: [number, number];
+} : Msg extends GLMessageType<"read-file"> ? {
+    file: Blob | undefined;
+} : undefined;
+export type GLMessageResponse<Msg extends GLMessage> = {
+    id: string;
+    content: GLMessageResponseContents<Msg>;
+    timestamp: number;
+};
+export type InterleavedBufferSpec = {
+    count: 1 | 2 | 3 | 4;
+    size: 8 | 16 | 32;
+    encoding: "int" | "normalized-int" | "float" | "uint" | "normalized-uint";
+    value: number[];
+    name: string;
+    stride: number;
+    offset: number;
+}[];
+export type BufferRef = {
+    spec: InterleavedBufferSpec;
+    id: string;
+};
+export type BufferInputRef = {
+    buffer: BufferRef;
+    inputName: string;
+};
+`])}]])}],["server",{type:"dir",contents:new Map([["GLMessageServer.d.ts",{type:"file",contents:new Blob([`import { Output, CanvasSource } from "mediabunny";
+import { UIOption } from "../../components/gl-message-ui/GLMessageUI";
+import { FilesystemAdaptor } from "../../filesystem/fs-protocol/FilesystemAdaptor";
+import { GLMessage, GLMessageResponse, GLPrimitive } from "../protocol/GLMessageProtocol";
+export declare function typeNameToGLPrimitive(typename: string): GLPrimitive | undefined;
+export type GLMessageContext = {
+    gl: WebGL2RenderingContext;
+    buffers: Map<string, WebGLBuffer>;
+    shaders: Map<string, WebGLShader>;
+    programs: Map<string, WebGLProgram>;
+    textures: Map<string, WebGLTexture>;
+    menus: Map<string, {
+        spec: UIOption;
+        value: any;
+    }>;
+    fs: FilesystemAdaptor;
+    canvas: HTMLCanvasElement;
+    container: {
+        current: HTMLElement | null;
+    };
+    zoomPan: {
+        current: {
+            bottomLeft: [number, number];
+            topRight: [number, number];
+        };
+    };
+    videoRef: {
+        current: {
+            output: Output;
+            canvasSource: CanvasSource;
+            frameIndex: number;
+            framerate: number;
+        };
+    };
+};
+export declare function executeGLMessage<Msg extends GLMessage>(msgwrapper: Msg, context: GLMessageContext): Promise<GLMessageResponse<Msg>>;
+`])}]])}]])}]])}],["oldsrc",{type:"dir",contents:new Map([["pipeline-assembler",{type:"dir",contents:new Map([["pipeline-format.d.ts",{type:"file",contents:new Blob([`type ID = string;
+type GL = WebGL2RenderingContext;
+export type GLSLFunctionNode = {
+    type: "glsl";
+    id: ID;
+    incoming: {
+        from: ID;
+        slot: string;
+    }[];
+    outgoing: {
+        from: ID;
+        slot: string;
+    };
+    src: string;
+    functionName: string;
+};
+export type TextureFormat = {
+    format: GL["R8"] | GL["R8_SNORM"] | GL["RG8"] | GL["RG8_SNORM"] | GL["RGB8"] | GL["RGB8_SNORM"] | GL["RGB565"] | GL["RGBA4"] | GL["RGB5_A1"] | GL["RGBA8"] | GL["RGBA8_SNORM"] | GL["RGB10_A2"] | GL["RGB10_A2UI"] | GL["SRGB8"] | GL["SRGB8_ALPHA8"] | GL["R16F"] | GL["RG16F"] | GL["RGB16F"] | GL["RGBA16F"] | GL["R32F"] | GL["RG32F"] | GL["RGB32F"] | GL["RGBA32F"] | GL["R11F_G11F_B10F"] | GL["RGB9_E5"] | GL["R8I"] | GL["R8UI"] | GL["R16I"] | GL["R16UI"] | GL["R32I"] | GL["R32UI"] | GL["RG8I"] | GL["RG8UI"] | GL["RG16I"] | GL["RG16UI"] | GL["RG32I"] | GL["RG32UI"] | GL["RGB8I"] | GL["RGB8UI"] | GL["RGB16I"] | GL["RGB16UI"] | GL["RGB32I"] | GL["RGB32UI"] | GL["RGBA8I"] | GL["RGBA8UI"] | GL["RGBA16I"] | GL["RGBA16UI"] | GL["RGBA32I"] | GL["RGBA32UI"];
+    width: number;
+    height: number;
+    type: GL["UNSIGNED_BYTE"] | GL["UNSIGNED_SHORT_5_6_5"] | GL["UNSIGNED_SHORT_4_4_4_4"] | GL["UNSIGNED_SHORT_5_5_5_1"] | GL["UNSIGNED_SHORT"] | GL["UNSIGNED_INT"] | GL["BYTE"] | GL["UNSIGNED_SHORT"] | GL["SHORT"] | GL["INT"] | GL["HALF_FLOAT"] | GL["FLOAT"] | GL["UNSIGNED_INT_2_10_10_10_REV"] | GL["UNSIGNED_INT_10F_11F_11F_REV"] | GL["UNSIGNED_INT_5_9_9_9_REV"] | GL["UNSIGNED_INT_24_8"] | GL["FLOAT_32_UNSIGNED_INT_24_8_REV"];
+};
+export type FramebufferNode = {
+    type: "framebuffer";
+    id: ID;
+    attachments: {
+        attachment: GL["COLOR_ATTACHMENT0"] | GL["COLOR_ATTACHMENT1"] | GL["COLOR_ATTACHMENT2"] | GL["COLOR_ATTACHMENT3"] | GL["COLOR_ATTACHMENT4"] | GL["COLOR_ATTACHMENT5"] | GL["COLOR_ATTACHMENT6"] | GL["COLOR_ATTACHMENT7"] | GL["COLOR_ATTACHMENT8"] | GL["COLOR_ATTACHMENT9"] | GL["COLOR_ATTACHMENT10"] | GL["COLOR_ATTACHMENT11"] | GL["COLOR_ATTACHMENT12"] | GL["COLOR_ATTACHMENT13"] | GL["COLOR_ATTACHMENT14"] | GL["COLOR_ATTACHMENT15"] | GL["DEPTH_ATTACHMENT"] | GL["STENCIL_ATTACHMENT"] | GL["DEPTH_STENCIL_ATTACHMENT"];
+        texture: TextureFormat;
+    }[];
+};
+export type BufferVectorArray = {
+    type: "float";
+    size: 1 | 2 | 3 | 4;
+    datatype: GL["BYTE"] | GL["SHORT"] | GL["UNSIGNED_BYTE"] | GL["UNSIGNED_SHORT"] | GL["FLOAT"] | GL["HALF_FLOAT"] | GL["INT"] | GL["UNSIGNED_INT"] | GL["INT_2_10_10_10_REV"] | GL["UNSIGNED_INT_2_10_10_10_REV"];
+    normalized: boolean;
+    stride: GLsizei;
+    offset: GLintptr;
+} | {
+    type: "int";
+    size: 1 | 2 | 3 | 4;
+    datatype: GL["BYTE"] | GL["UNSIGNED_BYTE"] | GL["SHORT"] | GL["UNSIGNED_SHORT"] | GL["INT"] | GL["UNSIGNED_INT"];
+    stride: GLsizei;
+    offset: GLintptr;
+};
+export type BufferFormat = BufferVectorArray[];
+export type GeometryNode = {
+    type: "geometry";
+    id: ID;
+    buffers: BufferFormat[];
+};
+export type RasterizerNode = {
+    type: "rasterizer";
+    id: ID;
+    inputs: {
+        id: ID;
+        index: number;
+    }[];
+    indices?: ID;
+};
+export type RenderState = {
+    buffers: Map<number, WebGLBuffer>;
+    textures: Map<number, WebGLTexture>;
+    framebuffers: Map<number, WebGLFramebuffer | null>;
+};
 export {};
 `])}]])}]])}]])};var r=e;export{r as default};
 //# sourceMappingURL=EvalboxDefsWrapper.js.map
