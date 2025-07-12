@@ -265,8 +265,10 @@ export declare const ui: {
     };
 };
 export type UI = typeof ui;
-`])}],["GLMessageClient.d.ts",{type:"file",contents:new Blob([`import { BufferInputRef, GLMessage, GLMessageResponse, GLPrimitive, MenuRef, ProgramRef, ShaderRef, TextureRef, UniformTypeValue } from "../../gl-message/protocol/GLMessageProtocol";
+`])}],["GLMessageClient.d.ts",{type:"file",contents:new Blob([`import { BufferInputRef, GLPrimitive, MenuRef, ProgramRef, ShaderRef, TextureRef, UniformTypeValue } from "../../gl-message/protocol/GLMessageProtocol";
 import { UIOption, UIReturnType } from "../../components/gl-message-ui/GLMessageUI";
+import { WorkerifyInterface } from "../../utilities/workerify/workerify";
+import { createGLMessageExecutor } from "../../gl-message/server/GLMessageServer";
 export type RangeObject = {
     map(min: number, max: number, includeStart?: boolean, includeEnd?: boolean): number;
     divideInterval(min: number, max: number): [number, number];
@@ -274,31 +276,15 @@ export type RangeObject = {
     step: number;
 };
 export declare function range<T extends any | Promise<any>>(divisions: number, cb: (range: RangeObject) => T): T extends Promise<any> ? Promise<Awaited<T>[]> : T;
-export declare function createGLMessageClient(send: <Msg extends GLMessage>(msg: Msg) => Promise<GLMessageResponse<Msg>>): {
-    clear(color?: [number, number, number, number], depth?: number, stencil?: number): Promise<GLMessageResponse<{
-        contents: {
-            type: "clear";
-            color: [number, number, number, number];
-            depth: number;
-            stencil: number;
-        };
-        id: string;
-    }>>;
+export declare function createGLMessageClient(glm: WorkerifyInterface<ReturnType<typeof createGLMessageExecutor>>): {
+    clear(color?: [number, number, number, number], depth?: number, stencil?: number): Promise<void>;
     createBufferFromArray<P extends {
         array: number[];
         count: 1 | 2 | 3 | 4;
         encoding: "float" | "int" | "uint" | "normalized-int" | "normalized-uint";
         size: 8 | 16 | 32;
     }>(params: P): Promise<{
-        spec: {
-            count: 2 | 1 | 3 | 4;
-            encoding: "float" | "int" | "uint" | "normalized-int" | "normalized-uint";
-            size: 8 | 16 | 32;
-            value: number[];
-            name: string;
-            stride: number;
-            offset: number;
-        }[];
+        spec: import("../../gl-message/protocol/GLMessageProtocol").InterleavedBufferSpec;
         id: string;
     }>;
     linkProgram<VertexOutsFragIns extends Record<string, GLPrimitive>>(vertex: ShaderRef<"vertex"> & {
@@ -308,22 +294,23 @@ export declare function createGLMessageClient(send: <Msg extends GLMessage>(msg:
     }): Promise<{
         inputs: Record<string, GLPrimitive>;
         outputs: Record<string, GLPrimitive>;
-        uniforms: Record<string, import("../../gl-message/protocol/GLMessageProtocol").UniformType>;
+        uniforms: {
+            [x: string]: import("../../gl-message/protocol/GLMessageProtocol").UniformType;
+        };
         id: string;
     }>;
-    sendGLMessage<Msg extends GLMessage>(msg: Msg): Promise<GLMessageResponse<Msg>>;
-    draw<Prog extends ProgramRef>(program: Prog, count: number, inputs: { [Key in keyof Prog["inputs"]]: BufferInputRef; }, outputs: { [Key in keyof Prog["outputs"]]: TextureRef | null; }, uniforms: { [Key in keyof Prog["uniforms"]]: UniformTypeValue<Prog["uniforms"][Key]>; }): Promise<GLMessageResponse<{
+    draw<Prog extends ProgramRef>(program: Prog, count: number, inputs: { [Key in keyof Prog["inputs"]]: BufferInputRef; }, outputs: { [Key in keyof Prog["outputs"]]: TextureRef | null; }, uniforms: { [Key in keyof Prog["uniforms"]]: UniformTypeValue<Prog["uniforms"][Key]>; }): Promise<void>;
+    create8BitRGBATexture(pixels: ArrayBuffer | undefined, width: number, height: number): Promise<{
         id: string;
-        contents: {
-            type: "draw";
-            program: Prog;
-            inputs: { [Key in keyof Prog["inputs"]]: BufferInputRef; };
-            outputs: { [Key_1 in keyof Prog["outputs"]]: TextureRef; };
-            uniforms: { [Key_2 in keyof Prog["uniforms"]]: UniformTypeValue<Prog["uniforms"][Key_2]>; };
-            count: number;
+        width: {
+            pixels: number;
         };
-    }>>;
-    create8BitRGBATexture(pixels: ArrayBuffer | undefined, width: number, height: number): Promise<TextureRef>;
+        height: {
+            pixels: number;
+        };
+        dimensionality: string;
+        format: string;
+    }>;
     loadShader(path: string, type: "vertex" | "fragment"): Promise<{
         inputs: Record<string, GLPrimitive>;
         outputs: Record<string, GLPrimitive>;
@@ -353,7 +340,7 @@ export declare function createGLMessageClient(send: <Msg extends GLMessage>(msg:
     addVideoFrame(): Promise<void>;
     renderVideo(filename: string, audioLink?: string): Promise<void>;
     readFile(filename: string): Promise<{
-        file: Blob | undefined;
+        file: Blob;
     }>;
     loadShaderSource(filename: string): Promise<void>;
 };
@@ -602,7 +589,7 @@ export type BufferInputRef = {
 `])}]])}],["server",{type:"dir",contents:new Map([["GLMessageServer.d.ts",{type:"file",contents:new Blob([`import { Output, CanvasSource } from "mediabunny";
 import { UIOption } from "../../components/gl-message-ui/GLMessageUI";
 import { FilesystemAdaptor } from "../../filesystem/fs-protocol/FilesystemAdaptor";
-import { GLMessage, GLMessageResponse, GLPrimitive } from "../protocol/GLMessageProtocol";
+import { BufferInputRef, GLPrimitive, InterleavedBufferSpec, ProgramRef, ShaderRef, ShaderSource, TextureRef } from "../protocol/GLMessageProtocol";
 export declare function typeNameToGLPrimitive(typename: string): GLPrimitive | undefined;
 export type GLMessageContext = {
     gl: WebGL2RenderingContext;
@@ -610,10 +597,12 @@ export type GLMessageContext = {
     shaders: Map<string, WebGLShader>;
     programs: Map<string, WebGLProgram>;
     textures: Map<string, WebGLTexture>;
-    menus: Map<string, {
-        spec: UIOption;
-        value: any;
-    }>;
+    menus: {
+        current: Map<string, {
+            spec: UIOption;
+            value: any;
+        }>;
+    };
     fs: FilesystemAdaptor;
     canvas: HTMLCanvasElement;
     container: {
@@ -633,8 +622,89 @@ export type GLMessageContext = {
             framerate: number;
         };
     };
+    setMenuValues: (cb: (values: Record<string, {
+        spec: UIOption;
+        value: any;
+    }>) => Record<string, {
+        spec: UIOption;
+        value: any;
+    }>) => void;
 };
-export declare function executeGLMessage<Msg extends GLMessage>(msgwrapper: Msg, context: GLMessageContext): Promise<GLMessageResponse<Msg>>;
+export declare function createGLMessageExecutor(ctx: GLMessageContext): {
+    clear(color?: [number, number, number, number], depth?: number, stencil?: number): void;
+    createBuffer(id: string, msg: {
+        source: {
+            type: "array";
+            spec: InterleavedBufferSpec;
+        };
+    }): {
+        spec: InterleavedBufferSpec;
+        id: string;
+    };
+    createShader(id: string, source: ShaderSource): {
+        inputs: Record<string, GLPrimitive>;
+        outputs: Record<string, GLPrimitive>;
+        uniforms: Record<string, import("../protocol/GLMessageProtocol").UniformType>;
+        shaderType: "vertex" | "fragment";
+        id: string;
+    };
+    createProgram(id: string, vertex: ShaderRef<"vertex">, fragment: ShaderRef<"fragment">): {
+        inputs: Record<string, GLPrimitive>;
+        outputs: Record<string, GLPrimitive>;
+        uniforms: {
+            [x: string]: import("../protocol/GLMessageProtocol").UniformType;
+        };
+        id: string;
+    };
+    draw(msg: {
+        program: ProgramRef;
+        inputs: Record<string, BufferInputRef>;
+        outputs: Record<string, TextureRef | null>;
+        uniforms: Record<string, number | number[] | TextureRef>;
+        count: number;
+    }): void;
+    loadFile(path: string): Promise<{
+        file: Blob;
+    }>;
+    createTexture(id: string, msg: {
+        pixels?: ArrayBuffer;
+        width: number;
+        height: number;
+        depth?: number;
+        internalformat: GLenum;
+        minFilter: GLenum;
+        magFilter: GLenum;
+        wrapS: GLenum;
+        wrapT: GLenum;
+    }): {
+        id: string;
+        width: {
+            pixels: number;
+        };
+        height: {
+            pixels: number;
+        };
+        dimensionality: string;
+        format: string;
+    };
+    createMenu<UI extends UIOption>(id: string, menu: UI): {
+        menu: UI;
+        id: string;
+    };
+    pollMenu(id: string): any;
+    resize(width: number, height: number): void;
+    getWindowSize(): {
+        width: number;
+        height: number;
+    };
+    getPanAndZoomBounds(): {
+        bottomLeft: [number, number];
+        topRight: [number, number];
+    };
+    resetEncoder(): Promise<void>;
+    addFrame(): Promise<void>;
+    renderVideo(filename: string, backingTrack?: string): Promise<void>;
+};
 `])}]])}]])}],["languages",{type:"dir",contents:new Map([["glsl",{type:"dir",contents:new Map([["parser",{type:"dir",contents:new Map([["glsl-keywords.d.ts",{type:"file",contents:new Blob([`export declare const GLSL_KEYWORDS: string[];
 export declare const GLSL_SYMBOLS: string[];
 `])}],["lexer.d.ts",{type:"file",contents:new Blob([`export declare enum TokenKind {
@@ -1511,6 +1581,16 @@ type LensObject<T, Root = T> = {
 export declare function lens<T, R = T>(t: T, path?: string[], root?: any): LensObject<T, R>;
 export declare function id<T>(t: T): T;
 export declare function delens<T>(t: LensObject<T>): T;
+export {};
+`])}]])}],["workerify",{type:"dir",contents:new Map([["workerify.d.ts",{type:"file",contents:new Blob([`type InterfaceWithMethods = Record<string, (...args: any[]) => any>;
+export type WorkerifyInterface<T extends InterfaceWithMethods> = {
+    [K in keyof T]: (...args: Parameters<T[K]>) => ReturnType<T[K]> extends Promise<any> ? ReturnType<T[K]> : Promise<ReturnType<T[K]>>;
+};
+export declare function workerifyServer<I extends InterfaceWithMethods>(i: I, discriminator: string, onReceive: (cb: (req: any) => any) => () => void, send: (res: any) => void): {
+    unsub: () => void;
+    setInterface(i: I): void;
+};
+export declare function workerifyClient<I extends InterfaceWithMethods>(discriminator: string, onReceive: (cb: (req: any) => any) => () => void, send: (req: any) => void): WorkerifyInterface<I>;
 export {};
 `])}]])}]])}],["filesystem",{type:"dir",contents:new Map([["fs-protocol",{type:"dir",contents:new Map([["FilesystemAdaptor.d.ts",{type:"file",contents:new Blob([`export type FilesystemAdaptor = {
     readDir: (path: string) => Promise<string[] | undefined>;

@@ -11,9 +11,10 @@ import {
 } from "../../gl-message-ui/GLMessageUI";
 import "./ImagePreviewPanel.css";
 import {
-  executeGLMessage,
+  createGLMessageExecutor,
   GLMessageContext,
 } from "../../../gl-message/server/GLMessageServer";
+import { workerifyServer } from "../../../utilities/workerify/workerify";
 
 function jsToDataURI(js: string) {
   return `data:application/javascript;base64,${btoa(js)}`;
@@ -293,53 +294,54 @@ export function ImagePreviewPanel(props: {
 
       const container = containerRef.current;
 
-      let vao: WebGLVertexArrayObject;
+      let vao: WebGLVertexArrayObject | undefined;
 
-      const messageListener = (e: MessageEvent) => {
-        const msgstart = performance.now();
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const gl = canvas.getContext("webgl2");
-        if (!gl) return;
-        if (!vao) {
-          vao = gl.createVertexArray();
-          gl.bindVertexArray(vao);
-        }
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        const context: GLMessageContext = {
-          gl,
-          buffers,
-          shaders,
-          programs,
-          textures,
-          menus: menus.current,
-          fs: props.data.file!.fs,
-          canvas,
-          container: { current: container },
-          zoomPan: zoomPanRef,
-          videoRef,
-        };
+      const msgstart = performance.now();
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const gl = canvas.getContext("webgl2");
+      if (!gl) return;
+      if (!vao) {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+      }
+      gl.viewport(0, 0, canvas.width, canvas.height);
 
-        (async () => {
-          evalbox.contentWindow!.postMessage(
-            await executeGLMessage(e.data as GLMessage, context),
-            "*"
-          );
-          const glm = e.data as GLMessage;
-          messages++;
-          if (glm && glm.contents && glm.contents.type === "draw") drawCalls++;
-          if (glm && glm.contents && glm.contents.type === "create-menu")
-            setMenuValues((values) => ({
-              ...Object.fromEntries(menus.current.entries()),
-              ...values,
-            }));
-        })();
+      const context: GLMessageContext = {
+        gl,
+        buffers,
+        shaders,
+        programs,
+        textures,
+        menus,
+        fs: props.data.file!.fs,
+        canvas,
+        container: { current: container },
+        zoomPan: zoomPanRef,
+        videoRef,
+        setMenuValues,
       };
 
-      window.addEventListener("message", messageListener);
+      const executor = createGLMessageExecutor(context);
+
+      const workerifiedServer = workerifyServer(
+        executor,
+        "glm",
+        (cb) => {
+          const messageListener = (e: MessageEvent) => {
+            cb(e.data);
+          };
+          window.addEventListener("message", messageListener);
+          return () => window.removeEventListener("message", messageListener);
+        },
+        (r) => {
+          evalbox.contentWindow!.postMessage(r, "*");
+        }
+      );
+
       return () => {
         void document.body.removeChild(evalbox);
-        window.removeEventListener("message", messageListener);
+        workerifiedServer.unsub();
         evalbox.removeEventListener("load", evalboxLoadListener);
       };
     }

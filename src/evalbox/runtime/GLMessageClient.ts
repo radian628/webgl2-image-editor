@@ -16,6 +16,8 @@ import {
   UIOption,
   UIReturnType,
 } from "../../components/gl-message-ui/GLMessageUI";
+import { WorkerifyInterface } from "../../utilities/workerify/workerify";
+import { createGLMessageExecutor } from "../../gl-message/server/GLMessageServer";
 
 export type RangeObject = {
   map(
@@ -61,7 +63,7 @@ export function range<T extends any | Promise<any>>(
 }
 
 export function createGLMessageClient(
-  send: <Msg extends GLMessage>(msg: Msg) => Promise<GLMessageResponse<Msg>>
+  glm: WorkerifyInterface<ReturnType<typeof createGLMessageExecutor>>
 ) {
   return {
     clear(
@@ -69,15 +71,7 @@ export function createGLMessageClient(
       depth?: number,
       stencil?: number
     ) {
-      return send({
-        contents: {
-          type: "clear",
-          color,
-          depth,
-          stencil,
-        },
-        id: v4(),
-      });
+      return glm.clear(color, depth, stencil);
     },
     async createBufferFromArray<
       P extends {
@@ -93,48 +87,29 @@ export function createGLMessageClient(
       },
     >(params: P) {
       const { count, encoding, size, array } = params;
-      return (
-        await send({
-          id: v4(),
-          contents: {
-            type: "create-buffer",
-            id: v4(),
-            source: {
-              type: "array",
-              spec: [
-                {
-                  count,
-                  encoding,
-                  size,
-                  value: array,
-                  name: "attr",
-                  stride: 0,
-                  offset: 0,
-                },
-              ],
+
+      return await glm.createBuffer(v4(), {
+        source: {
+          type: "array",
+          spec: [
+            {
+              count,
+              encoding,
+              size,
+              value: array,
+              name: "attr",
+              stride: 0,
+              offset: 0,
             },
-          },
-        })
-      ).content;
+          ],
+        },
+      });
     },
     async linkProgram<VertexOutsFragIns extends Record<string, GLPrimitive>>(
       vertex: ShaderRef<"vertex"> & { outputs: VertexOutsFragIns },
       fragment: ShaderRef<"fragment"> & { inputs: VertexOutsFragIns }
     ) {
-      return (
-        await send({
-          id: v4(),
-          contents: {
-            type: "create-program",
-            id: v4(),
-            vertex,
-            fragment,
-          },
-        })
-      ).content;
-    },
-    sendGLMessage<Msg extends GLMessage>(msg: Msg) {
-      return send(msg);
+      return await glm.createProgram(v4(), vertex, fragment);
     },
     async draw<Prog extends ProgramRef>(
       program: Prog,
@@ -147,53 +122,30 @@ export function createGLMessageClient(
         >;
       }
     ) {
-      return send({
-        id: v4(),
-        contents: {
-          type: "draw",
-          program,
-          inputs,
-          outputs,
-          uniforms,
-          count,
-        },
-      });
+      return await glm.draw({ program, inputs, outputs, uniforms, count });
     },
     async create8BitRGBATexture(
       pixels: ArrayBuffer | undefined,
       width: number,
       height: number
     ) {
-      return (
-        await send({
-          id: v4(),
-          contents: {
-            type: "create-texture",
-            pixels,
-            width,
-            height,
-            internalformat: WebGL2RenderingContext.RGBA8,
-            minFilter: WebGL2RenderingContext.LINEAR,
-            magFilter: WebGL2RenderingContext.LINEAR,
-            wrapS: WebGL2RenderingContext.REPEAT,
-            wrapT: WebGL2RenderingContext.REPEAT,
-            id: v4(),
-          },
-        })
-      ).content;
+      return await glm.createTexture(v4(), {
+        pixels,
+        width,
+        height,
+        internalformat: WebGL2RenderingContext.RGBA8,
+        minFilter: WebGL2RenderingContext.LINEAR,
+        magFilter: WebGL2RenderingContext.LINEAR,
+        wrapS: WebGL2RenderingContext.REPEAT,
+        wrapT: WebGL2RenderingContext.REPEAT,
+      });
     },
     async loadShader(path: string, type: "vertex" | "fragment") {
-      const shaderFile = await send({
-        id: v4(),
-        contents: {
-          type: "load-file",
-          path,
-        },
-      });
+      const shaderFile = await glm.loadFile(path);
 
-      if (!shaderFile.content.file) return;
+      if (!shaderFile.file) return;
 
-      const text = await shaderFile.content.file.text();
+      const text = await shaderFile.file.text();
 
       const textWithoutVersion = text.replace(/^.*\#version 300 es/, "");
 
@@ -203,20 +155,13 @@ export function createGLMessageClient(
 
       const tu = parsed.data.data.translationUnit;
 
-      const shader = await send({
-        id: v4(),
-        contents: {
-          type: "create-shader",
-          source: {
-            shaderType: type,
-            text,
-            ...getInputsOutputsAndUniforms(tu),
-          },
-          id: v4(),
-        },
+      const shader = await glm.createShader(v4(), {
+        shaderType: type,
+        text,
+        ...getInputsOutputsAndUniforms(tu),
       });
 
-      return shader.content;
+      return shader;
     },
     async createMenu<UI extends UIOption>(
       menu: UI
@@ -224,60 +169,21 @@ export function createGLMessageClient(
       id: string;
       menu: UI;
     }> {
-      const res = await send({
-        id: v4(),
-        contents: {
-          type: "create-menu",
-          menu,
-          id: v4(),
-        },
-      });
-
-      return res.content as any;
+      return (await glm.createMenu(v4(), menu)) as { id: string; menu: UI };
     },
     async pollMenu<UI extends UIOption>(
       menu: MenuRef & { menu: UI }
     ): Promise<UIReturnType<UI>> {
-      const res = await send({
-        id: v4(),
-        contents: {
-          type: "poll-menu",
-          id: menu.id,
-          menu,
-        },
-      });
-
-      return res.content;
+      return await glm.pollMenu(menu.id);
     },
     async getWindowSize() {
-      const res = await send({
-        id: v4(),
-        contents: {
-          type: "get-window-size",
-        },
-      });
-
-      return res.content;
+      return await glm.getWindowSize();
     },
     async resize(width: number, height: number) {
-      await send({
-        id: v4(),
-        contents: {
-          type: "resize",
-          width,
-          height,
-        },
-      });
+      return await glm.resize(width, height);
     },
     async getPanAndZoomBounds() {
-      const bounds = (
-        await send({
-          id: v4(),
-          contents: {
-            type: "get-pan-and-zoom-bounds",
-          },
-        })
-      ).content;
+      const bounds = await glm.getPanAndZoomBounds();
 
       return {
         ...bounds,
@@ -292,41 +198,31 @@ export function createGLMessageClient(
       };
     },
     async resetVideoEncoder() {
-      const res = await send({
-        id: v4(),
-        contents: {
-          type: "reset-encoder",
-        },
-      });
+      // const res = await send({
+      //   id: v4(),
+      //   contents: {
+      //     type: "reset-encoder",
+      //   },
+      // });
+      return await glm.resetEncoder();
     },
     async addVideoFrame() {
-      const res = await send({
-        id: v4(),
-        contents: {
-          type: "add-frame",
-        },
-      });
+      return await glm.addFrame();
     },
     async renderVideo(filename: string, audioLink?: string) {
-      const res = await send({
-        id: v4(),
-        contents: {
-          filename,
-          audioLink,
-          type: "render-video",
-        },
-      });
+      return await glm.renderVideo(filename, audioLink);
     },
     async readFile(filename: string) {
-      return (
-        await send({
-          id: v4(),
-          contents: {
-            filename,
-            type: "read-file",
-          },
-        })
-      ).content;
+      // return (
+      //   await send({
+      //     id: v4(),
+      //     contents: {
+      //       filename,
+      //       type: "read-file",
+      //     },
+      //   })
+      // ).content;
+      return await glm.loadFile(filename);
     },
     async loadShaderSource(filename: string) {
       return;

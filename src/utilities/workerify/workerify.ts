@@ -2,10 +2,12 @@ import { v4 } from "uuid";
 
 type InterfaceWithMethods = Record<string, (...args: any[]) => any>;
 
-type WorkerifyInterface<T extends InterfaceWithMethods> = {
+export type WorkerifyInterface<T extends InterfaceWithMethods> = {
   [K in keyof T]: (
     ...args: Parameters<T[K]>
-  ) => T[K] extends Promise<any> ? T[K] : Promise<T[K]>;
+  ) => ReturnType<T[K]> extends Promise<any>
+    ? ReturnType<T[K]>
+    : Promise<ReturnType<T[K]>>;
 };
 
 type WorkerifyRequest<T extends InterfaceWithMethods> = {
@@ -31,14 +33,15 @@ export function workerifyServer<I extends InterfaceWithMethods>(
   onReceive: (cb: (req: any) => any) => () => void,
   send: (res: any) => void
 ) {
-  onReceive(async (req: any) => {
+  let inf = i;
+  const unsub = onReceive(async (req: any) => {
     if (!req || req._discriminator !== discriminator) {
       return;
     }
 
     const typedReq: WorkerifyRequest<I> = req;
 
-    const responseContents = await i[typedReq.type](...typedReq.contents);
+    const responseContents = await inf[typedReq.type](...typedReq.contents);
 
     send({
       contents: responseContents,
@@ -46,15 +49,21 @@ export function workerifyServer<I extends InterfaceWithMethods>(
       id: typedReq.id,
     });
   });
+
+  return {
+    unsub,
+    setInterface(i: I) {
+      inf = i;
+    },
+  };
 }
 
 export function workerifyClient<I extends InterfaceWithMethods>(
-  i: I,
   discriminator: string,
   onReceive: (cb: (req: any) => any) => () => void,
   send: (req: any) => void
 ): WorkerifyInterface<I> {
-  return new Proxy(i, {
+  return new Proxy({} as I, {
     get(i, prop) {
       return (...args: any[]) => {
         const id = v4();
