@@ -299,7 +299,15 @@ export type ExternalDeclarationDeclaration = {
   _isExtDecl: true;
 };
 export type SingleItemImport = {
-  name: string;
+  name:
+    | {
+        type: "all-overloads";
+        name: string;
+      }
+    | {
+        type: "specific-overload";
+        proto: Commented<FunctionHeader>;
+      };
   alias?: string;
 };
 
@@ -2177,7 +2185,16 @@ const import_option: Parser<
 > = nodeify_commented(
   commentify(
     seq(
-      tok(TokenKind.Identifier),
+      alt_sc(
+        apply(function_prototype, (e) => ({
+          type: "specific-overload" as const,
+          proto: e,
+        })),
+        apply(tok(TokenKind.Identifier), (e) => ({
+          type: "all-overloads" as const,
+          name: e.text,
+        }))
+      ),
       opt_sc(
         seq(
           comment_parser,
@@ -2187,8 +2204,7 @@ const import_option: Parser<
         )
       )
     ),
-    (s) =>
-      ({ name: s[0].text, alias: s[1]?.[3].text }) satisfies SingleItemImport,
+    (s) => ({ name: s[0], alias: s[1]?.[3].text }) satisfies SingleItemImport,
     (s) => (s[1] ? [s[1][0], s[1][2]] : [])
   )
 );
