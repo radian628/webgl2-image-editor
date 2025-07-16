@@ -1,4 +1,10 @@
-import { ASTNode, Expr, FullySpecifiedType } from "../parser/parser";
+import {
+  ASTNode,
+  Expr,
+  FullySpecifiedType,
+  FunctionHeader,
+  TypeSpecifier,
+} from "../parser/parser";
 import { evaluateExpression } from "../evaluator/evaluator";
 import { Scope } from "../langsupport/glsl-language-server";
 import {
@@ -90,6 +96,11 @@ export function stringifyType(type: GLSLType): string {
   }
 }
 
+export function stringifyTypeResult(tr: TypeResult): string {
+  if (tr.type) return stringifyType(tr.type);
+  return "error";
+}
+
 export function matchesPrimitiveTypes<P extends PType, A extends Arity>(
   type: GLSLType | undefined,
   ptypes?: P[],
@@ -152,6 +163,34 @@ function getTypeName(type: FullySpecifiedType) {
 
 function getExpressionType(expr: ASTNode<Expr>, scopes: Scope[]): TypeResult {
   return getExprType(expr, scopes);
+}
+
+export function getFunctionSignature(proto: FunctionHeader, scopes: Scope[]) {
+  const params = proto.parameters?.data ?? [];
+
+  let paramTypes: TypeResult[] = params.map((p) => {
+    let typespec: ASTNode<TypeSpecifier>;
+    if (p.data.declaratorOrSpecifier.type === "declarator") {
+      typespec = p.data.declaratorOrSpecifier.declarator.data.typeSpecifier;
+    } else {
+      typespec = p.data.declaratorOrSpecifier.specifier;
+    }
+    const fst: FullySpecifiedType = {
+      specifier: typespec,
+    };
+    return convertType(fst, scopes);
+  });
+
+  let returnType: TypeResult = convertType(
+    proto.fullySpecifiedType.data,
+    scopes
+  );
+
+  return {
+    paramTypes,
+    returnType,
+    name: proto.name.data,
+  };
 }
 
 // TODO: handle matrices and samplers and the like
